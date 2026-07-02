@@ -1,459 +1,260 @@
-# ElevenLabs Real-Time Voice Changer
+# ElevenLabs Voice Changer Suite
 
-Real-time **male↔female** (or any voice-to-voice) conversion on **Fedora 43**
-using the ElevenLabs Speech-to-Speech streaming API.
+Real-time **voice conversion**, **voice note generation**, and **TTS** using the ElevenLabs Speech-to-Speech and Text-to-Speech APIs.
 
-Speak into your mic → converted voice comes out of a virtual microphone →
-any app (WhatsApp, Telegram, Linphone, Zoom, Discord) picks it up as its
-mic input. **End-to-end latency <400 ms.**
+**Fedora 43 (PipeWire) • <400 ms latency • Virtual microphone for any app**
 
 ---
 
 ## Quick Start
 
 ```bash
-# 1. Run the setup script (installs everything + creates virtual mic)
+# 1. Install everything + create virtual mic
 ./setup_voice_changer.sh
 
-# 2. Set your ElevenLabs API key
+# 2. Set your API key
 export ELEVENLABS_API_KEY="sk_..."
 
-# 3. Run the converter (interactive — picks voice and devices)
-python3 voice_converter.py
+# 3. Pick a tool:
+python3 voice_converter.py           # Real-time voice changer
+python3 voice_note.py --voice-id X   # Record → convert → play
+python3 tts_voice_note.py --voice-id X  # Type → TTS → play
 
-# 4. In your app, select "VoiceChanger" as the microphone
+# 4. In your app (Telegram/WhatsApp), select "VoiceChanger" as mic
 ```
 
 ---
 
-## Table of Contents
+## Tools
 
-1. [Fedora 43 Setup](#1-fedora-43-setup)
-2. [Virtual Audio Sink](#2-virtual-audio-sink)
-3. [Dependencies](#3-dependencies)
-4. [Usage](#4-usage)
-5. [App Configuration](#5-app-configuration)
-6. [VoIP.ms Registration (Linphone)](#6-voipms-registration-linphone)
-7. [Voice Cloning](#7-voice-cloning)
-8. [How It Works](#8-how-it-works)
-9. [Troubleshooting](#9-troubleshooting)
-10. [Stopping](#10-stopping)
-
----
-
-## 1. Fedora 43 Setup
-
-Run **one command:**
-
-```bash
-./setup_voice_changer.sh
-```
-
-This does **everything** automatically:
-
-| Step | What it does |
+| Tool | What it does |
 |------|-------------|
-| System packages | `python3`, `pipewire-pulseaudio`, `portaudio`, build tools |
-| Python packages | `sounddevice`, `numpy`, `elevenlabs`, `requests` |
-| Virtual sink | Creates `VoiceChanger` null-sink + `VoiceChanger.monitor` source |
-| Persistence | Installs a `systemd --user` service so the virtual sink survives reboots |
+| `voice_converter.py` | Real-time: mic → VAD → ElevenLabs STS → virtual sink (for calls) |
+| `voice_note.py` | Record a voice note → convert it → play through VC → Telegram captures it |
+| `tts_voice_note.py` | Type a message → TTS generates it → play through VC → Telegram captures it |
+| **API backend** | FastAPI server (`api/main.py`) — REST + WebSocket for the React frontend |
+| **React frontend** | `frontend/` — Vite + React SPA for visual control |
 
-### Manual fallback
+---
 
-If you prefer to do it step by step:
+## New Features
+
+### 🎛 Voice Settings (all tools)
+
+Tune how every voice sounds with four dials:
+
+| Parameter | Range | Low | High | Default |
+|-----------|-------|-----|------|---------|
+| `--stability` | 0–1 | Expressive, varied intonation | Robotic, monotone | 0.30 |
+| `--similarity-boost` | 0–1 | Deviates from source (unique) | Tight clone | 0.95 |
+| `--style-exaggeration` | 0–1 | Subtle delivery | Over-the-top dramatic | 0.0 |
+| `--speaker-boost` | bool | Off | Prefer speaker identity | off |
+
+**Presets** (use `--voice-preset <name>`):
+- `natural` — S=0.25/B=0.60 — warm, expressive, less clone-like
+- `unique` — S=0.35/B=0.40 — drifts from source for a more original sound
+- `stable` — S=0.70/B=0.85 — consistent, good for longer recordings
+- `dramatic` — S=0.30/B=0.75/E=0.60 — character voices
+- `robotic` — S=0.90/B=0.95 — deliberately monotone
+
+Example:
+```bash
+# Make Rachel sound more natural and unique
+python3 voice_note.py --voice-id 21m00Tcm4TlvDq8ikWAM --voice-preset natural
+
+# Manual tuning
+python3 tts_voice_note.py --voice-id EXAVITQu4vr4xnSDxMaL \
+  --stability 0.25 --similarity-boost 0.55 --style-exaggeration 0.1
+```
+
+### 🔄 Replay & Recapture
+
+Every generated voice note is saved to history. Commands available in both `voice_note.py` and `tts_voice_note.py`:
+
+```
+H        — Show history (all past clips)
+R#       — Replay entry # through VoiceChanger (with 3s countdown)
+G#       — Regenerate entry # with current voice settings
+D#       — Delete entry #
+L# <lbl> — Label entry # with a meaningful name
+```
+
+This lets you:
+- **Recapture** a clip if the Telegram timing was off
+- **Regenerate** the same input with different voice settings
+- **Label** clips so you can find them later
+- **Delete** clips you don't want
+
+History is persisted in `~/.voice_history/history.json`. Audio files go to `~/VoiceNotes/`.
+
+### ✨ Voice Design (via API/frontend)
+
+Describe a voice in plain English and ElevenLabs creates it:
 
 ```bash
-# System packages
-sudo dnf install -y python3-pip python3-devel pipewire-pulseaudio \
-    pulseaudio-utils alsa-lib-devel portaudio-devel
+curl -X POST http://localhost:8765/api/voice/design \
+  -H "Content-Type: application/json" \
+  -d '{"text_description": "warm female voice, early 30s, British accent"}'
+```
 
-# Python packages
-pip3 install --upgrade sounddevice numpy elevenlabs requests
+### 🔀 Voice Blend (via API/frontend)
 
-# Virtual sink (creates the mic that apps will see)
-pactl load-module module-null-sink \
-    sink_name=VoiceChanger \
-    sink_properties=device.description=VoiceChanger
+Mix 2–4 existing voices into a unique hybrid:
 
-# Make it permanent
-mkdir -p ~/.config/systemd/user/
-# (see setup_voice_changer.sh for the full systemd unit)
+```bash
+curl -X POST http://localhost:8765/api/voice/blend \
+  -H "Content-Type: application/json" \
+  -d '{"voice_ids": ["id1", "id2"], "weights": [0.6, 0.4]}'
+```
+
+### 🌐 React Frontend
+
+A visual SPA that wraps all the CLI functionality:
+
+```bash
+# Terminal 1: Start the API backend
+export ELEVENLABS_API_KEY="sk_..."
+python3 -m api.main
+
+# Terminal 2: Start the frontend (separate terminal)
+cd frontend && npm run dev
+```
+
+Open http://localhost:5173 in your browser.
+
+**Features:**
+- **Record tab** — Mic button, VU meter, record/convert/play flow
+- **TTS tab** — Text input with character count, generate & play
+- **History tab** — Scrollable list with play, label, delete
+- **Settings tab** — Stability/similarity/style sliders, presets, voice design, voice blending
+
+---
+
+## Command Reference
+
+### voice_converter.py (real-time)
+
+```bash
+python3 voice_converter.py --voice-id <ID> \
+  [--stability 0.25] [--similarity-boost 0.60] \
+  [--style-exaggeration 0.0] [--speaker-boost] \
+  [--voice-preset natural] \
+  [--input-device bluetooth] [--output-device VoiceChanger] \
+  [--threshold 100] [--verbose]
+```
+
+### voice_note.py (record → convert → play)
+
+```bash
+python3 voice_note.py --voice-id <ID> \
+  [--voice-preset natural] \
+  [--input recording.wav] [--output result.wav]
+
+# Interactive mode (no --input):
+#   R  — Record & convert
+#   P  — Play result
+#   H  — Show history
+#   R# — Replay entry #
+#   G# — Regenerate entry #
+#   D# — Delete entry #
+#   L# — Label entry #
+#   Q  — Quit
+```
+
+### tts_voice_note.py (text → TTS → play)
+
+```bash
+python3 tts_voice_note.py --voice-id <ID> \
+  [--voice-preset unique]
+
+# Interactive mode:
+#   Type your message, then 'S' to submit
+#   H  — History
+#   R# — Replay
+#   G# — Regenerate
+#   D# — Delete
+#   L# — Label
+```
+
+### API Server
+
+```bash
+# Start the FastAPI backend
+python3 -m api.main     # defaults to port 8765
+# or:
+export VOICE_API_PORT=8765
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8765
+```
+
+API docs at http://localhost:8765/docs (OpenAPI/Swagger).
+
+---
+
+## Project Structure
+
+```
+voice/
+├── voice_converter.py      # Core STS client, VAD, Pipeline, VoiceSettings
+├── voice_note.py           # Record → STS → play, with history/replay
+├── tts_voice_note.py       # TTS → play, with history/replay
+├── setup_voice_changer.sh  # Install deps + create virtual sink
+├── voice_changer.sh        # Launcher
+├── api/
+│   ├── main.py             # FastAPI app with all routes
+│   ├── models.py           # Pydantic request/response models
+│   └── voice_manager.py    # Wraps CLI modules for the API
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx         # Main app with tabs
+│   │   ├── api.ts          # API client
+│   │   ├── types.ts        # TypeScript types
+│   │   └── components/
+│   │       ├── RecordTab.tsx    # Recording UI
+│   │       ├── TTSTab.tsx       # TTS UI
+│   │       ├── HistoryTab.tsx   # History list
+│   │       ├── SettingsTab.tsx   # Voice settings + design + blend
+│   │       ├── VUMeter.tsx      # Mic level WebSocket
+│   │       └── VoicePicker.tsx  # Voice selector
+│   └── package.json
+└── README.md
 ```
 
 ---
 
-## 2. Virtual Audio Sink
-
-The virtual sink is the **heart of the setup**. It's a software-only audio
-device with two ports:
-
-- **`VoiceChanger`** (sink) — where the Python script **writes** converted audio
-- **`VoiceChanger.monitor`** (source) — what apps **read** as their microphone
+## How the Voice Pipeline Works
 
 ```
-Physical Mic → Python → ElevenLabs API → [VoiceChanger sink]
-                                                    ↓
-                                        VoiceChanger.monitor
-                                                    ↓
-                                        WhatsApp / Telegram / Linphone
+Physical Mic → VAD (energy-based, 20ms blocks) → segments (~300ms)
+    → ElevenLabs STS API → converted PCM → VoiceChanger virtual sink
+    → VoiceChanger.monitor source → Telegram/WhatsApp sees it as mic
 ```
 
-### Commands to manage it
-
-```bash
-# List all sinks
-pactl list-sinks short
-
-# List all sources (the monitor appears here)
-pactl list-sources short
-
-# Remove and recreate
-pactl unload-module module-null-sink
-pactl load-module module-null-sink sink_name=VoiceChanger \
-    sink_properties=device.description=VoiceChanger
-```
+**TTS path:** Text → ElevenLabs TTS API → PCM → VoiceChanger sink → app mic
 
 ---
 
-## 3. Dependencies
+## Voice Cloning & Custom Voices
 
-| Package | Purpose |
-|---------|---------|
-| `sounddevice` | Audio capture from mic + playback to virtual sink |
-| `numpy` | Audio buffer manipulation (RMS, reshaping) |
-| `elevenlabs` | Official Python SDK for ElevenLabs API |
-| `requests` | Fallback HTTP client if SDK is missing |
-| `pipewire-pulseaudio` | PulseAudio compatibility layer for PipeWire |
-| `portaudio-devel` | Build dependency for sounddevice |
+| Method | Tool | Cost |
+|--------|------|------|
+| Voice settings tuning | `--stability`, `--similarity-boost` | Free |
+| Quick presets | `--voice-preset natural\|unique\|dramatic` | Free |
+| Voice design | API `/api/voice/design` or ElevenLabs Voice Lab | API usage |
+| Voice blending | API `/api/voice/blend` | API usage |
+| Instant voice clone | [ElevenLabs Voice Lab](https://elevenlabs.io/app/voice-lab) | Subscription |
+| Professional clone | ElevenLabs Pro plan | Higher tier |
 
-All installed by `setup_voice_changer.sh`. To update later:
-
-```bash
-pip3 install --upgrade elevenlabs sounddevice numpy requests
+To make an existing voice sound **natural and unique**, start with:
 ```
+--stability 0.25 --similarity-boost 0.55
+```
+This gives the model room to be expressive while deviating from the stock voice.
 
 ---
 
-## 4. Usage
-
-### Set your API key
-
-```bash
-export ELEVENLABS_API_KEY="sk_0e4ac5645cd8aa3cadcf3cf788dc80805022474d52ea4a2f"
-```
-
-Or pass it on the command line:
-
-```bash
-python3 voice_converter.py --api-key "sk_..."
-```
-
-### Interactive mode (recommended first run)
-
-```bash
-python3 voice_converter.py
-```
-
-Prompts you to:
-1. Select a voice from the ElevenLabs library (or paste a Voice ID)
-2. Choose input device (microphone)
-3. Choose output device (the "VoiceChanger" virtual sink)
-
-### Command-line mode
-
-```bash
-# List available voices
-python3 voice_converter.py --list-voices
-
-# List audio devices
-python3 voice_converter.py --list-devices
-
-# Run with a specific voice
-python3 voice_converter.py --voice-id JBFqnCBsd6RMkjVDRZzb
-
-# With specific device indices
-python3 voice_converter.py \
-    --voice-id 21m00Tcm4TlvDq8ikWAM \
-    --input-device 2 \
-    --output-device 5
-
-# Adjust VAD sensitivity (lower = more sensitive)
-python3 voice_converter.py --threshold 150
-
-# Debug logging
-python3 voice_converter.py --verbose
-```
-
-### Popular preset voice IDs
-
-| Voice | Voice ID | Gender |
-|-------|----------|--------|
-| Rachel | `21m00Tcm4TlvDq8ikWAM` | Female |
-| Bella | `EXAVITQu4vr2l5k6U2P1` | Female |
-| Sarah | `ODq5zmih8GrVes37Dizd` | Female |
-| Josh | `TxGEqnHWrfWFTfGW9XjX` | Male |
-| Arnold | `VR6AewLTigWG4xSOukaG` | Male |
-| Adam | `pNInz6obpgDQGcFmaJgB` | Male |
-
-Use `--list-voices` to see all voices available on your account.
-
----
-
-## 5. App Configuration
-
-### WhatsApp Desktop
-
-```
-Settings → Audio → Microphone → "VoiceChanger Monitor Source"
-```
-
-- WhatsApp may need a restart to see new audio devices
-- Works with both voice calls and voice messages
-
-### Telegram Desktop
-
-```
-Settings → Advanced → Microphone → "VoiceChanger Monitor Source"
-```
-
-- Test by recording a voice message — it should play back with the converted voice
-- Also works for voice chats and calls
-
-### Linphone (softphone)
-
-```
-Preferences → Audio → Capture device → "VoiceChanger Monitor Source"
-```
-
-Also set:
-- **Playback device**: your headphones/speakers (not the virtual sink)
-- **Ringer device**: your headphones/speakers
-
-### Zoiper
-
-```
-Settings → Audio → Input device → "VoiceChanger Monitor Source"
-```
-
-### Other apps (Discord, Zoom, Google Meet, etc.)
-
-Any app that lets you choose a microphone can select
-`VoiceChanger Monitor Source`.
-
----
-
-## 6. VoIP.ms Registration (Linphone)
-
-To make and receive calls via VoIP.ms:
-
-### In the VoIP.ms portal
-
-1. Log in at [voip.ms](https://voip.ms)
-2. **Create a DID number** (or use an existing one)
-3. Note your **sip username** and **sip password** under
-   `Billing → Sub Accounts` (or create a sub-account)
-4. Under `Sub Accounts`, ensure:
-   - **SIP/IAX**: `SIP`
-   - **Caller ID Name**: anything you want
-   - **Password**: set a strong password
-
-### In Linphone
-
-1. Open Linphone → `Preferences → SIP Accounts`
-2. Click **`+`** to add an account
-3. Fill in:
-
-   | Field | Value |
-   |-------|-------|
-   | Username | (your VoIP.ms sub-account username) |
-   | SIP Domain / Registrar | `atlanta.voip.ms` (or closest server) |
-   | Password | (your VoIP.ms sub-account password) |
-   | Display Name | (anything) |
-   | Transport | UDP |
-
-   **Pick the nearest SIP server** from:
-   - `atlanta.voip.ms`
-   - `dallas.voip.ms`
-   - `denver.voip.ms`
-   - `losangeles.voip.ms`
-   - `montreal.voip.ms`
-   - `newyork.voip.ms`
-   - `toronto.voip.ms`
-   - `vancouver.voip.ms`
-
-4. Click **Save** — Linphone registers with VoIP.ms (green checkmark = success)
-5. Test by calling `echo` or `1000` (VoIP.ms echo test number)
-
-Now all calls through Linphone will use the converted voice!
-
-### PSTN Call Flow
-
-```
-You → Physical Mic → Python → ElevenLabs → VoiceChanger sink → Linphone
-                                                                    ↓
-                                                                 VoIP.ms
-                                                                    ↓
-                                                            Phone Network
-                                                                    ↓
-                                                            Recipient hears
-                                                            converted voice
-```
-
----
-
-## 7. Voice Cloning
-
-To use your **own voice** (or a custom target voice):
-
-1. Go to [ElevenLabs Voice Lab](https://elevenlabs.io/app/voice-lab)
-2. Click **"Add Voice"** → **"Instant Voice Cloning"**
-3. Upload **1–5 minutes** of clean speech:
-   - No background noise
-   - Clear, consistent recording
-   - Single speaker
-   - Good audio quality (48 kHz+ preferred)
-4. Name your voice and click **"Add Voice"**
-5. Once created, copy the **Voice ID** from the voice's page (looks like:
-   `5QJ5DFh4Mj8Tqq1I8TlK`)
-6. Use it with:
-
-```bash
-python3 voice_converter.py --voice-id "5QJ5DFh4Mj8Tqq1I8TlK"
-```
-
-**Professional voice cloning** (ElevenLab's "Professional Voice Cloning"):
-Same process but costs more and gives higher quality. Available on
-ElevenLabs Creator/Pro plans.
-
----
-
-## 8. How It Works
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Your Computer                                                       │
-│                                                                     │
-│  ┌──────────┐   20ms blocks    ┌──────────┐   300ms segments        │
-│  │ Physical  │ ──────────────→ │  Python  │ ──────────────────────→ │
-│  │ Microphone│                 │ Script  │                         │
-│  └──────────┘                  │          │    ElevenLabs STS API   │
-│                                │ (VAD →  │    (multilingual_v2)    │
-│                                │  Buffer)│ ←────────────────────── │
-│                                └────┬─────┘                        │
-│                                     │                              │
-│                          Converted PCM audio                       │
-│                                     │                              │
-│                                     ↓                              │
-│                             ┌──────────────┐                       │
-│                             │ VoiceChanger  │  (virtual sink)      │
-│                             │ Null Sink     │                      │
-│                             └──────┬───────┘                       │
-│                                    │                               │
-│                                    ↓                               │
-│                          VoiceChanger.monitor                       │
-│                          (virtual microphone)                       │
-│                                    │                               │
-│                                    ↓                               │
-│                    WhatsApp / Telegram / Linphone                   │
-│                    (selected as mic input)                          │
-└─────────────────────────────────────────────────────────────────────┘
-                                    ↓
-                           Remote caller hears
-                           converted voice
-```
-
-### Latency Budget
-
-| Stage | Time | Description |
-|-------|------|-------------|
-| VAD segment accumulation | ~300 ms | Buffering speech before API call |
-| ElevenLabs API processing | ~60–120 ms | First-byte latency with optimize=4 |
-| Playout buffer | ~20 ms | Jitter buffer (2 blocks) |
-| **Total** | **~380–440 ms** | End-to-end |
-
-### Pipeline threads
-
-- **Capture thread**: reads mic at 20 ms blocks, runs energy-based VAD,
-  assembles 300 ms speech segments
-- **Process thread**: sends segments to ElevenLabs STS, reads streaming
-  response, queues converted chunks
-- **Playout thread**: drains the output queue, writes to virtual sink
-
----
-
-## 9. Troubleshooting
-
-### "Virtual sink not found"
-
-```bash
-# Check if it exists
-pactl list-sinks short | grep VoiceChanger
-
-# If missing, create it
-pactl load-module module-null-sink \
-    sink_name=VoiceChanger \
-    sink_properties=device.description=VoiceChanger
-
-# Check PipeWire status
-systemctl --user status pipewire-pulse.service
-```
-
-### No audio / silent output
-
-```bash
-# Verify Python can see the devices
-python3 voice_converter.py --list-devices
-
-# Check monitor source exists
-pactl list-sources short | grep VoiceChanger
-
-# Follow the log in verbose mode
-python3 voice_converter.py --verbose
-```
-
-### 401 Unauthorized from ElevenLabs
-
-```bash
-# Verify your key is set
-echo "${ELEVENLABS_API_KEY:0:8}..."   # should show "sk_..."
-
-# Test directly
-curl -H "xi-api-key: $ELEVENLABS_API_KEY" \
-     https://api.elevenlabs.io/v1/voices
-```
-
-### API errors or timeouts
-
-```bash
-# Check internet
-ping -c2 api.elevenlabs.io
-
-# Check ElevenLabs status
-# https://status.elevenlabs.io
-```
-
-### High latency / choppy audio
-
-- Lower the VAD threshold for faster detection: `--threshold 100`
-- Use a wired microphone (no Bluetooth — adds ~100–200 ms latency)
-- Close other bandwidth-intensive apps
-- Run `python3 voice_converter.py --verbose` to see per-segment stats
-
-### App doesn't see VoiceChanger
-
-Restart the app after creating the virtual sink. Some apps scan audio
-devices only at startup.
-
----
-
-## 10. Stopping
-
-Press **`Ctrl+C`** in the terminal where the converter is running.
-
-The script handles clean shutdown — threads terminate, audio streams close.
-
-To also remove the virtual sink (not required — it's harmless):
-
-```bash
-pactl unload-module module-null-sink
-```
+## Troubleshooting
+
+- **"Voice design API not available"** — SDK version may not support it yet. Use [ElevenLabs Voice Lab](https://elevenlabs.io/app/voice-lab) directly.
+- **Blend fails** — Verify all voice IDs are valid and your plan supports blending.
+- **No audio** — Run `python3 voice_converter.py --list-devices` to verify PulseAudio devices.
+- **Virtual sink missing** — `pactl load-module module-null-sink sink_name=VoiceChanger sink_properties=device.description=VoiceChanger`

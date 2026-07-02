@@ -1,0 +1,187 @@
+import type { VoiceSettings, HistoryEntry, VoiceInfo } from './types'
+
+const BASE = '/api'
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${url}`, {
+    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    ...init,
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => 'Unknown error')
+    throw new Error(`${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json()
+}
+
+// ── Status ──
+
+export interface Status {
+  status: string
+  audio_sources: string[]
+  audio_sinks: string[]
+  history_count: number
+}
+
+export async function getStatus(): Promise<Status> {
+  return fetchJson('/status')
+}
+
+// ── Devices ──
+
+export async function getSources(): Promise<{ sources: string[]; default: string }> {
+  return fetchJson('/devices/sources')
+}
+
+export async function getSinks(): Promise<{ sinks: string[] }> {
+  return fetchJson('/devices/sinks')
+}
+
+// ── Voices ──
+
+export async function getVoices(): Promise<VoiceInfo[]> {
+  const res = await fetchJson<{ voices: VoiceInfo[] }>('/voices')
+  return res.voices
+}
+
+// ── Recording ──
+
+export async function startRecord(source?: string): Promise<void> {
+  const params = source ? `?source=${encodeURIComponent(source)}` : ''
+  await fetchJson(`/record/start${params}`, { method: 'POST' })
+}
+
+export async function stopRecord(): Promise<{ file_path: string; duration_secs: number; size_bytes: number }> {
+  return fetchJson('/record/stop', { method: 'POST' })
+}
+
+export async function getRecordStatus(): Promise<{ recording: boolean }> {
+  return fetchJson('/record/status')
+}
+
+// ── Conversion (STS) ──
+
+export interface ConvertResult {
+  status: string
+  file_path: string
+  duration_secs: number
+  history_id: number
+}
+
+export async function convertAudio(voiceId: string, inputFile: string, settings: VoiceSettings): Promise<ConvertResult> {
+  return fetchJson(`/convert?input_file=${encodeURIComponent(inputFile)}`, {
+    method: 'POST',
+    body: JSON.stringify({ voice_id: voiceId, voice_settings: settings }),
+  })
+}
+
+// ── TTS ──
+
+export interface TTSResult {
+  status: string
+  file_path: string
+  duration_secs: number
+  chars: number
+  history_id: number
+}
+
+export async function generateTTS(text: string, voiceId: string, settings: VoiceSettings): Promise<TTSResult> {
+  return fetchJson('/tts', {
+    method: 'POST',
+    body: JSON.stringify({ text, voice_id: voiceId, voice_settings: settings }),
+  })
+}
+
+// ── Playback ──
+
+export async function previewAudio(filePath: string, speed?: number, character?: string): Promise<void> {
+  await fetchJson('/preview', {
+    method: 'POST',
+    body: JSON.stringify({ file_path: filePath, countdown_secs: 0, speed: speed ?? 1.0, character: character ?? 'studio' }),
+  })
+}
+
+export async function captureAudio(filePath: string, countdown?: number, speed?: number, character?: string): Promise<void> {
+  await fetchJson('/capture', {
+    method: 'POST',
+    body: JSON.stringify({ file_path: filePath, countdown_secs: countdown ?? 3, speed: speed ?? 1.0, character: character ?? 'studio' }),
+  })
+}
+
+export interface PlayStatus {
+  playing: boolean
+  file_path: string
+  total_secs: number
+  elapsed_secs: number
+  progress_pct: number
+  mode: string
+}
+
+export async function getPlayStatus(): Promise<PlayStatus> {
+  return fetchJson('/play/status')
+}
+
+export async function stopPlayback(): Promise<void> {
+  await fetchJson('/play/stop', { method: 'POST' })
+}
+
+// ── History ──
+
+export async function getHistory(): Promise<HistoryEntry[]> {
+  const res = await fetchJson<{ entries: HistoryEntry[] }>('/history')
+  return res.entries
+}
+
+export async function deleteHistory(id: number): Promise<void> {
+  await fetchJson(`/history/${id}`, { method: 'DELETE' })
+}
+
+export async function labelHistory(id: number, label: string): Promise<void> {
+  await fetchJson(`/history/${id}/label?label=${encodeURIComponent(label)}`, { method: 'PATCH' })
+}
+
+// ── Text Refinement ──
+
+export interface RefineResult {
+  status: string
+  original: string
+  refined: string
+  provider: string
+}
+
+export async function refineText(text: string, style?: string): Promise<RefineResult> {
+  return fetchJson('/refine-text', {
+    method: 'POST',
+    body: JSON.stringify({ text, style: style ?? 'conversational' }),
+  })
+}
+
+// ── Voice Design ──
+
+export interface VoiceDesignResult {
+  status: string
+  voice_id: string
+  voice_name: string
+}
+
+export async function designVoice(description: string): Promise<VoiceDesignResult> {
+  return fetchJson('/voice/design', {
+    method: 'POST',
+    body: JSON.stringify({ text_description: description }),
+  })
+}
+
+// ── Voice Blend ──
+
+export interface VoiceBlendResult {
+  status: string
+  voice_id: string
+  voice_name: string
+}
+
+export async function blendVoices(voiceIds: string[], weights?: number[]): Promise<VoiceBlendResult> {
+  return fetchJson('/voice/blend', {
+    method: 'POST',
+    body: JSON.stringify({ voice_ids: voiceIds, weights }),
+  })
+}
