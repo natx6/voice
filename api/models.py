@@ -70,6 +70,7 @@ class TTSRequest(BaseModel):
     text: str
     voice_id: str
     voice_settings: VoiceSettingsModel = VoiceSettingsModel()
+    wallet: str = ""
 
 
 class TTSResponse(BaseModel):
@@ -78,6 +79,19 @@ class TTSResponse(BaseModel):
     duration_secs: float
     chars: int
     history_id: int
+
+
+class TTSVariationsRequest(BaseModel):
+    text: str
+    voice_id: str
+    count: int = 3
+    voice_settings: VoiceSettingsModel = VoiceSettingsModel()
+    wallet: str = ""
+
+
+class TTSVariationsResponse(BaseModel):
+    status: str
+    variations: list[dict]
 
 
 # ── Playback ────────────────────────────────────────────────────────────────

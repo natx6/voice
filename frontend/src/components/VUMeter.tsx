@@ -67,7 +67,7 @@ export default function VUMeter({ recording }: VUMeterProps) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>
         <span>Mic level</span>
-        <span>{recording ? '🔴 REC' : ''}</span>
+        <span>{recording ? 'REC' : ''}</span>
       </div>
       <div className="vu-meter">
         <div className="fill" style={{ width: `${pct}%` }} />

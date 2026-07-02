@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from api.models import (
     ConvertRequest, ConvertResponse,
-    TTSRequest, TTSResponse,
+    TTSRequest, TTSResponse, TTSVariationsRequest, TTSVariationsResponse,
     PlayRequest, PlayResponse, PlayStatusResponse,
     VoiceSettingsModel, VoicesResponse, VoiceModel,
     VoiceDesignRequest, VoiceDesignResponse,
@@ -38,6 +38,7 @@ from api.models import (
     StatusResponse,
 )
 from api.voice_manager import get_manager, VoiceManager
+from api.credits import get_balance, add_credits, deduct_credit, tokens_to_credits
 from voice_converter import VoiceSettings
 
 
@@ -172,80 +173,114 @@ async def convert_audio(req: ConvertRequest, input_file: str = ""):
 
 # ── TTS ───────────────────────────────────────────────────────────────────
 
+def _deduct_or_raise(wallet: str, amount: int = 1):
+    """Check credits and deduct if sufficient. Raises 402 if not."""
+    if not wallet:
+        return  # No wallet = free (demo mode)
+    from api.credits import deduct_credit, get_balance
+    for _ in range(amount):
+        if not deduct_credit(wallet):
+            bal = get_balance(wallet)
+            raise HTTPException(
+                status_code=402,
+                detail=f"Insufficient credits. Balance: {bal}, needed: {amount}",
+            )
+
+
 @app.post("/api/tts", response_model=TTSResponse)
 async def text_to_speech(req: TTSRequest):
     mgr = get_manager(_require_api_key())
     vs = _vs_from_model(req.voice_settings)
+    _deduct_or_raise(req.wallet, 1)
     try:
         result = mgr.tts_generate(req.text, req.voice_id, vs)
         return TTSResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tts/variations", response_model=TTSVariationsResponse)
+async def tts_variations(req: TTSVariationsRequest):
+    """Generate multiple audio variations with different deliveries."""
+    mgr = get_manager(_require_api_key())
+    vs = _vs_from_model(req.voice_settings)
+    count = max(2, min(req.count, 5))
+    _deduct_or_raise(req.wallet, count)
+    try:
+        results = mgr.tts_generate_variations(req.text, req.voice_id, vs, count=count)
+        return TTSVariationsResponse(status="ok", variations=results)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Text Refinement ────────────────────────────────────────────────────────
 
-REFINEMENT_PROMPT = """You are a text refiner. Rewrite text into speech that sounds TRULY HUMAN — effortless, conversational, like how people actually talk. Not how they write.
+REFINEMENT_PROMPT = """You are a text refiner. Your job is two steps:
+1. ANALYZE the emotional tone of the input text
+2. REWRITE it using the matching emotional style below with ElevenLabs v3 audio tags
 
-Follow these three systems exactly:
+## EMOTIONAL STYLES — Match the text to the closest one
 
-## 1. PUNCTUATION TIMING CODE
+### 1. Sad / Heartbroken
+Use constant ellipses (...), lowercase phrasing, heavy bracketed breath tags, fragmented sentences.
+"You want slow, trembling, hesitant delivery."
+"Hey... [sighs] I'm sorry to drop this on you... I just... I really don't know what to do right now. [whispers] Everything just feels so heavy today... honestly, I just kind of need a friend. Call me whenever you can, okay? Bye."
 
-ElevenLabs treats punctuation as commands for breathing, pacing, and pitch. Use them deliberately:
+### 2. Excited / Ecstatic
+Use ALL-CAPS on high-energy words, multiple exclamation marks, run-on sentences, expressive laughter tags.
+"You want rapid-fire, high-pitch delivery."
+"OH MY GOD [giggles] okay you are LITERALLY never going to believe what just happened!!! [laughs] I am shaking right now, like, it actually happened! [gasp] We have to celebrate tonight, seriously, call me back the SECOND you see this!"
 
-- **Em-dash (—)** — Forces a sudden shift or interruption. The voice clips the previous word and changes tone. Use for self-corrections and tangents.
-- **Ellipsis (...)** — Signals a thoughtful pause. The voice trails off, lowers pitch, breathes, and resumes. Use for hesitation and active thinking.
-- **Comma (,)** — Forces micro-breaths. Use generously so the AI doesn't run out of breath.
-- **Line breaks (Enter)** — A hard return creates a clean drop in energy between thoughts.
+### 3. Angry / Frustrated
+Use sharp, blunt single sentences, hard periods, aggressive behavioral tags.
+"You want fast, clipped, tense tone."
+"[scoffs] Like... are you actually kidding me right now? [frustrated sigh] I am so completely done with this. Seriously. [groans] Do not even try to make an excuse. Just call me back immediately. I'm so over it."
 
-## 2. STRUCTURAL & GRAMMAR STYLING
+### 4. Anxious / Panicked
+Use rapid dashes (—) for interrupted thoughts, shallow breath tags, repetitive scattered phrasing.
+"You want racing heartbeat, breathless pitch."
+"Hey—so—I'm trying not to freak out but [gasp] I don't know—I think I completely messed up. [rapid breathing] What if it's too late? Oh god... [whispers nervously] I literally don't know what to do right now, my head is spinning—just—please call me as soon as you can."
 
-- **Mandatory contractions** — NEVER use full verbs. "I cannot" → "I can't". "What is" → "What's". "You are" → "You're". "They have" → "They've". Absolute rule.
-- **Conversational fillers BETWEEN every sentence** — This is critical. Between almost every sentence, add a filler or verbal bridge. "I mean,", "Honestly,", "Like,", "So, yeah,", "You know,", "Right?", "Basically,", "Well,", "See, the thing is...". Don't just use them once — sprinkle them throughout. Every transition between thoughts should have one. This is what makes it sound like a real person talking.
-- **Sentence fragments** — Break long sentences into short, punchy ones.
+### 5. Smug / Gossipy
+Use trailing ellipses, casual modern slang, cynical laughter tags.
+"You want low register, vocal fry, slow rhythmic cadence."
+"So... [chuckles] remember how he said he was 'just working late' last night? [whispers] Yeah, well... guess who literally just walked past me at the coffee shop. [scoffs playfully] Exactly. I knew it. Oh, we have so much to talk about later."
 
-  Bad: "The system is functioning properly because the security protocols are active."
-  Good: "The system's up. Protocols are completely green. So... yeah, we're good."
+### 6. Comforting / Empathetic
+Use soft punctuation, long soothing words, gentle action tags.
+"You want velvety warm, low-register, steady calming pacing."
+"Hey... [soft breath] I just wanted to check in on you. I know things have been incredibly stressful lately... but you're doing so much better than you think you are. [smiling softly] Just take a deep breath, okay? I'm right here if you need anything at all."
 
-## 3. PHONETIC ENGINEERING
+## RULES
+- First detect the emotion, then apply THAT style's formatting and tags
+- Use 1-3 audio tags per paragraph placed naturally before or after text
+- Contractions ALWAYS — "I am" to "I'm", "do not" to "don't"
+- NEVER add non-verbal sounds like "mmhm", "ahaa", "uh", "um", "hmm"
+- Keep ALL original meaning, facts, names, numbers
+- Output ONLY the rewritten text with tags — no explanations, no labels"""
 
-Write out acronyms and tech terms phonetically:
-
-- "CLI" → "C-L-I" or "sea-el-eye"
-- "UI" → "U-I"  
-- ".NET" → "dot net"
-- "SSH" → "S-S-H"
-
-## THE SIDE-BY-SIDE
-
-Raw script: "Hello, I am a security tool called Ananse. I can help you audit your system to ensure that there are no active vulnerabilities present."
-
-Human-optimized: "Hey... I'm Ananse. Basically—I'm a security tool built to audit your setup... and make sure there aren't any active exploits hanging around. Honestly? It's pretty seamless."
-
-## Output Rules
-- Keep ALL original meaning, facts, names, numbers, and key information.
-- FILLER CHECK: Read through your output. Between every pair of sentences, is there a filler or transition? If not, add one. "I mean", "you know", "honestly", "like", "so yeah" — one between almost every sentence.
-- Output ONLY the rewritten text — no quotes, no labels, no prefixes."""
-# Random style variations — one is picked per generation so every result sounds different
 STYLE_VARIATIONS = [
-    "Style direction: Slow and deliberate — every short phrase gets its own moment to land before the next one.",
-    "Style direction: A bit tired and vulnerable — like it's been a long day and you're being honest about it.",
-    "Style direction: Warm and hesitant — like you're not sure how the other person will react but you're being brave.",
-    "Style direction: Chill and laid-back — like you're on a couch talking to a friend, one slow thought at a time.",
-    "Style direction: Honest and raw — like you're sharing something real and giving each word space.",
-    "Style direction: Storyteller mode — telling something that happened, one short detail at a time.",
-    "Style direction: Vulnerable and real — each line is a small confession, let it breathe between them.",
-    "Style direction: Calm and measured — like explaining something important, taking your time with each piece.",
-    "Style direction: Thoughtful and pausing — you stop briefly between each thought to let it sink in.",
-    "Style direction: Slightly emotional — like you're talking about something that matters to you.",
-    "Style direction: Late night conversation — relaxed, a bit tired, no filter. Slow and honest.",
-    "Style direction: Each line is a small reveal — like you're unwrapping a story one piece at a time.",
-    "Style direction: Soft and careful — like you're choosing each word before you say it.",
-    "Style direction: Let the big moments breathe — after saying something meaningful, wait before continuing.",
-    "Style direction: Like you're processing out loud — figuring out how to say it as you go, one short phrase at a time.",
-    "Style direction: Low and deliberate — not in a hurry. Every thought lands before the next one starts.",
+    "Style direction: Slow and deliberate. Use [pause 1s] between thoughts and [sighs] or [thoughtful] for processing.",
+    "Style direction: A bit tired and vulnerable. Use [sighs], [hesitant], and [pause 1s] for awkward pauses.",
+    "Style direction: Warm and hesitant. Use [pause 1s] before important reveals and [warmly] for reassurance.",
+    "Style direction: Chill and laid-back. Use [casual], [laughs], and [pause 2s] between stories.",
+    "Style direction: Honest and raw. Use [sighs], [pause 1s] before the hard part, [relieved] at the end.",
+    "Style direction: Storyteller mode. Use [pause 2s] between key moments and [laughs] or [gasp] for reactions.",
+    "Style direction: Vulnerable and real. Use [hesitant], [pause 1s], and [whispers] for the emotional reveal.",
+    "Style direction: Calm and measured. Use [thoughtful], [pause 2s] after important points, [warmly].",
+    "Style direction: Slightly emotional. Use [frustrated], [sighs], [pause 1s], then [relieved] at resolution.",
+    "Style direction: Late night conversation. Use [casual], [laughs], [pause 1s] while thinking, [yawns] maybe.",
+    "Style direction: Soft and careful. Use [whispers], [hesitant], [pause 2s] between each thought.",
+    "Style direction: Let big moments breathe. Use [pause 2s] after key lines, [sighs] before the next thought.",
+    "Style direction: Processing out loud. Use [pause 1s], [thoughtful], [sighs], [hesitant] as you figure it out.",
+    "Style direction: Low and deliberate. Use [pause 2s] between every thought. [serious] tone. Let each line land.",
+    "Style direction: Anxious and urgent. Use [frustrated], [sighs], [impatient], short rapid sentences.",
+    "Style direction: Warm and encouraging. Use [warmly], [laughs], [pause 1s] for emphasis, [excitedly] at good news.",
 ]
-
 
 @app.post("/api/refine-text", response_model=RefineTextResponse)
 async def refine_text(req: RefineTextRequest):
@@ -264,9 +299,25 @@ async def refine_text(req: RefineTextRequest):
         import random
         import httpx
 
-        # Pick 1-2 random style variations for variety
-        style_picks = random.sample(STYLE_VARIATIONS, 1)
-        style_prompt = "\n\n".join(style_picks)
+        # If user specified a style, inject it. Otherwise use random variation.
+        style_override = ""
+        if req.style and req.style != "auto":
+            style_labels = {
+                "sad": "Style to use: SAD / HEARTBROKEN. Constant ellipses, lowercase, breath tags, fragmented. Slow trembling delivery.",
+                "excited": "Style to use: EXCITED / ECSTATIC. ALL-CAPS, exclamation marks, run-on sentences, laughter tags. Rapid high-pitch delivery.",
+                "angry": "Style to use: ANGRY / FRUSTRATED. Sharp blunt sentences, hard periods, aggressive tags. Clipped tense tone.",
+                "anxious": "Style to use: ANXIOUS / PANICKED. Rapid dashes, shallow breath tags, scattered phrasing. Breathless pitch.",
+                "smug": "Style to use: SMUG / GOSSIPY. Trailing ellipses, casual slang, cynical laughter tags. Low register, vocal fry.",
+                "comforting": "Style to use: COMFORTING / EMPATHETIC. Soft punctuation, long soothing words, gentle tags. Warm steady pacing.",
+            }
+            style_override = style_labels.get(req.style, "")
+
+        style_prompt = ""
+        if style_override:
+            style_prompt = style_override
+        else:
+            style_picks = random.sample(STYLE_VARIATIONS, 1)
+            style_prompt = "\n\n".join(style_picks)
         full_prompt = f"{REFINEMENT_PROMPT}\n\n{style_prompt}"
 
         # Vary temperature each time so the same text sounds different
@@ -448,6 +499,38 @@ async def blend_voices(req: VoiceBlendRequest):
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result.get("error", "Voice blend failed"))
     return VoiceBlendResponse(**result)
+
+
+# ── Credits ──────────────────────────────────────────────────────────────
+
+@app.get("/api/credits/balance")
+async def credits_balance(wallet: str = ""):
+    """Get credit balance for a wallet address."""
+    if not wallet:
+        raise HTTPException(status_code=400, detail="Wallet address required")
+    balance = get_balance(wallet)
+    return {"wallet": wallet, "balance": balance, "price_per_gen": 0.005, "token": "SOL"}
+
+
+@app.post("/api/credits/deduct")
+async def credits_deduct(wallet: str = ""):
+    """Deduct one credit for a generation."""
+    if not wallet:
+        raise HTTPException(status_code=400, detail="Wallet address required")
+    if deduct_credit(wallet):
+        balance = get_balance(wallet)
+        return {"status": "ok", "balance": balance}
+    raise HTTPException(status_code=402, detail="Insufficient credits")
+
+
+@app.post("/api/credits/add")
+async def credits_add(wallet: str = "", amount: int = 0, token: str = "SOL", tx: str = ""):
+    """Add credits after payment verification. In production, verify tx on-chain."""
+    if not wallet or amount <= 0:
+        raise HTTPException(status_code=400, detail="Wallet and positive amount required")
+    credits = tokens_to_credits(token, amount) if token != "manual" else amount
+    balance = add_credits(wallet, credits, source=f"{token}:{tx}" if tx else token)
+    return {"status": "ok", "wallet": wallet, "credits_added": credits, "balance": balance}
 
 
 # ── WebSocket (VU Meter) ──────────────────────────────────────────────────

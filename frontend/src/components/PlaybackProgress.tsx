@@ -87,7 +87,7 @@ export default function PlaybackProgress({
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>
           <span>
             {isPlaying
-              ? (isPreview ? '🔊 Previewing...' : isCapturing ? '📱 Playing for Telegram...' : '▶️ Playing...')
+              ? (isPreview ? 'Previewing...' : isCapturing ? 'Playing for Telegram...' : 'Playing...')
               : 'Ready to play'
             }
           </span>
@@ -116,7 +116,7 @@ export default function PlaybackProgress({
       <div style={{ display: 'flex', gap: 8 }}>
         {isPlaying ? (
           <button className="btn btn-danger btn-sm" onClick={handleStop} style={{ flex: 1 }}>
-            ⏹ Stop
+            Stop
           </button>
         ) : (
           <>
@@ -126,7 +126,7 @@ export default function PlaybackProgress({
               disabled={disabled}
               style={{ flex: 1 }}
             >
-              🔊 Preview
+              Preview
             </button>
             <button
               className="btn btn-primary btn-sm"
@@ -134,7 +134,7 @@ export default function PlaybackProgress({
               disabled={disabled}
               style={{ flex: 1 }}
             >
-              📱 Capture for Telegram
+              Capture for Telegram
             </button>
           </>
         )}

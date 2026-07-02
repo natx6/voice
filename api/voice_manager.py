@@ -250,23 +250,25 @@ class VoiceManager:
     # ── TTS ─────────────────────────────────────────────────────────────
 
     def tts_generate(self, text: str, voice_id: str,
-                     voice_settings: Optional[VoiceSettings] = None) -> dict:
-        """Generate TTS audio from text."""
+                     voice_settings: Optional[VoiceSettings] = None,
+                     seed: Optional[int] = None) -> dict:
+        """Generate a single TTS audio from text."""
         from tts_voice_note import tts_stream
         vs = voice_settings or VoiceSettings()
 
-        chunks = list(tts_stream(self.api_key, voice_id, text, vs))
+        chunks = list(tts_stream(self.api_key, voice_id, text, vs, seed=seed))
         data = b"".join(chunks)
 
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        raw_path = TEMP_DIR / f"tts_{ts}.raw"
+        tag = f"tts_{ts}_{seed}" if seed is not None else f"tts_{ts}"
+        raw_path = TEMP_DIR / f"{tag}.raw"
         raw_path.write_bytes(data)
 
         wav_path = tts_raw_to_wav(raw_path, OUTPUT_RATE)
         notes_dir = Path.home() / "VoiceNotes"
         notes_dir.mkdir(exist_ok=True)
-        final_path = notes_dir / f"tts_{ts}.wav"
+        final_path = notes_dir / f"{tag}.wav"
         shutil.copy2(wav_path, final_path)
 
         hsecs = len(data) // (OUTPUT_RATE * 2)
@@ -291,6 +293,21 @@ class VoiceManager:
             "chars": len(text),
             "history_id": hid,
         }
+
+    def tts_generate_variations(self, text: str, voice_id: str,
+                                 voice_settings: Optional[VoiceSettings] = None,
+                                 count: int = 3) -> list[dict]:
+        """Generate multiple variations with different seeds. User picks the best."""
+        seeds = list(range(1, count + 1))
+        results = []
+        for s in seeds:
+            try:
+                result = self.tts_generate(text, voice_id, voice_settings, seed=s)
+                result["seed"] = s
+                results.append(result)
+            except Exception as e:
+                log.error("Variation %d failed: %s", s, e)
+        return results
 
     # ── Playback ────────────────────────────────────────────────────────
 
@@ -461,22 +478,19 @@ class VoiceManager:
     # ── History ─────────────────────────────────────────────────────────
 
     def get_history(self) -> list[dict]:
-        """Merge STS and TTS history, sorted by id descending."""
+        """Merge STS and TTS history, deduplicated by id, newest first."""
+        seen: set[int] = set()
         all_entries = []
         for e in self.sts_history.list():
-            all_entries.append(e.to_dict())
+            if e.id not in seen:
+                seen.add(e.id)
+                all_entries.append(e.to_dict())
         for e in self.tts_history.list():
-            all_entries.append(e.to_dict())
+            if e.id not in seen:
+                seen.add(e.id)
+                all_entries.append(e.to_dict())
         all_entries.sort(key=lambda x: x["id"], reverse=True)
         return all_entries
-
-    def delete_history_entry(self, entry_id: int) -> bool:
-        if self.sts_history.delete(entry_id):
-            return True
-        if self.tts_history.delete(entry_id):
-            return True
-        return False
-
     def label_history_entry(self, entry_id: int, label: str) -> bool:
         if self.sts_history.rename(entry_id, label):
             return True

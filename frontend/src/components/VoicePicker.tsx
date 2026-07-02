@@ -11,124 +11,167 @@ type Gender = 'all' | 'male' | 'female'
 
 export default function VoicePicker({ voices, selected, onChange }: VoicePickerProps) {
   const [gender, setGender] = useState<Gender>('all')
+  const [open, setOpen] = useState(false)
 
-  // Detect gender from labels or name (extensive fallback list)
-  const getGender = (v: VoiceInfo): Gender => {
+  const getGender = (v: VoiceInfo | undefined): Gender => {
+    if (!v) return 'all'
     const labels = v.labels ?? {}
     const labelGender = (labels.gender || '').toLowerCase()
-    if (labelGender === 'male' || labelGender === 'female') {
-      return labelGender as Gender
-    }
+    if (labelGender === 'male' || labelGender === 'female') return labelGender as Gender
     const name = v.name.toLowerCase()
-    const femaleWords = [
-      'female', 'woman', 'girl', 'lady', 'sarah', 'emma', 'bella', 'rachel', 'jessica',
-      'olivia', 'charlotte', 'amelia', 'sophia', 'ava', 'mia', 'alice', 'matilda', 'laura',
-      'lily', 'clara', 'anika', 'eryn', 'hope', 'hannah', 'sophie', 'chloe', 'isabella',
-      'ella', 'grace', 'luna', 'layla', 'riley', 'zoe', 'victoria', 'aria', 'scarlett',
-      'penelope', 'layla', 'mila', 'avery', 'camila', 'aria', 'skylar', 'katherine',
-      'naomi', 'jasmine', 'maya', 'audrey', 'brooklyn', 'hazel', 'abigail', 'ella',
-      'eleanor', 'stella', 'violet', 'aubrey', 'addison', 'natalie', 'leah', 'savannah',
-      'anna', 'elizabeth', 'serenity', 'madison', 'lillian', 'claire', 'samantha',
-      'kylie', 'peyton', 'morgan', 'kaylee', 'paige', 'makayla', 'marissa', 'brianna',
-      'alexa', 'gabriella', 'london', 'jenna', 'kate', 'shelby', 'taylor', 'alexis',
-      'mackenzie', 'ashley', 'jordyn', 'sydney', 'cassidy', 'chelsy', 'mary', 'diana',
-      'lisa', 'susan', 'karen', 'betty', 'helen', 'jennifer', 'linda', 'barbara',
-      'patricia', 'deborah', 'sandra', 'carol', 'sharon', 'michelle', 'amanda',
-      'melissa', 'stephanie', 'nicole', 'danielle', 'catherine', 'christina',
-      'lauren', 'rebecca', 'tiffany', 'heather', 'whitney', 'amber', 'crystal',
-      'megan', 'erica', 'rachel', 'faith', 'joy', 'prudence', 'serena', 'iris',
-      'rose', 'daisy', 'lilly', 'holly', 'heather', 'fern', 'wren', 'blake',
-      'quinn', 'harper', 'reese', 'jade', 'jules',
-    ]
-    const maleWords = [
-      'male', 'man', 'boy', 'guy', 'josh', 'adam', 'arnold', 'antoni', 'patrick',
-      'sam', 'daniel', 'james', 'michael', 'david', 'thomas', 'chris', 'roger',
-      'charlie', 'george', 'callum', 'harry', 'liam', 'will', 'eric', 'brian',
-      'bill', 'henry', 'jack', 'oliver', 'noah', 'ethan', 'levi', 'owen', 'luke',
-      'wyatt', 'logan', 'carter', 'jayden', 'gabriel', 'julian', 'grayson',
-      'isaac', 'joseph', 'caleb', 'ryan', 'nathan', 'jacob', 'andrew', 'aiden',
-      'mason', 'matthew', 'elijah', 'aaron', 'sebastian', 'colton', 'elias',
-      'ezra', 'dominick', 'max', 'maxwell', 'theo', 'theodore', 'nicholas',
-      'colin', 'connor', 'ian', 'alex', 'alexander', 'brandon', 'zachary',
-      'kevin', 'jason', 'justin', 'eric', 'tyler', 'kyle', 'dylan', 'nolan',
-      'cameron', 'evan', 'jordan', 'jake', 'cole', 'bradley', 'shawn', 'derrick',
-      'marcus', 'derek', 'brendan', 'brady', 'spencer', 'dustin', 'mitchell',
-      'steve', 'steven', 'philip', 'peter', 'paul', 'mark', 'john', 'robert',
-      'richard', 'joseph', 'charles', 'william', 'george', 'edward', 'frank',
-      'raymond', 'walter', 'harold', 'jack', 'henry', 'arthur', 'fred', 'albert',
-      'samuel', 'earl', 'carl', 'ernest', 'lawrence', 'francis', 'leonard',
-      'melvin', 'lester', 'clarence', 'vincent', 'howard', 'gordon', 'jerome',
-      'guy', 'allen', 'bruce', 'brent', 'keith', 'terry', 'jerry', 'larry',
-      'barry', 'tom', 'hugh', 'neil', 'reggie', 'ray', 'sidney', 'wade',
-      'gilbert', 'dwayne', 'russell', 'colin', 'kurt', 'louis', 'lewis',
-      'finley', 'toby', 'arthur', 'archie', 'albie', 'freddie', 'harrison',
-    ]
-    for (const w of femaleWords) {
-      if (name.includes(w)) return 'female'
-    }
-    for (const w of maleWords) {
-      if (name.includes(w)) return 'male'
-    }
-    return 'all' // unknown — show in "All" but not in gender filters
+    const femaleWords = ['female', 'woman', 'girl', 'sarah', 'emma', 'bella', 'rachel', 'jessica',
+      'olivia', 'alice', 'matilda', 'laura', 'lily', 'clara', 'anika', 'eryn', 'hope', 'hannah',
+      'sophie', 'chloe', 'mia', 'ella', 'grace', 'luna', 'layla', 'riley', 'zoe', 'aria', 'victoria',
+      'scarlett', 'penelope', 'mila', 'avery', 'camila', 'naomi', 'jasmine', 'maya', 'audrey',
+      'brooklyn', 'hazel', 'abigail', 'eleanor', 'stella', 'violet', 'aubrey', 'addison',
+      'samantha', 'kylie', 'morgan', 'brianna', 'alexis', 'mackenzie', 'ashley', 'jennifer',
+      'michelle', 'amanda', 'melissa', 'stephanie', 'nicole', 'danielle', 'catherine', 'lauren',
+      'rebecca', 'heather', 'megan', 'erica', 'faith', 'serena', 'iris', 'rose', 'daisy',
+      'holly', 'jade', 'jules', 'quinn', 'harper', 'reese', 'blake']
+    const maleWords = ['male', 'man', 'boy', 'guy', 'josh', 'adam', 'arnold', 'antoni', 'patrick',
+      'sam', 'daniel', 'james', 'michael', 'david', 'thomas', 'chris', 'roger', 'charlie',
+      'george', 'callum', 'harry', 'liam', 'will', 'eric', 'brian', 'bill', 'henry', 'jack',
+      'oliver', 'noah', 'ethan', 'levi', 'owen', 'luke', 'logan', 'carter', 'jayden', 'gabriel',
+      'julian', 'isaac', 'joseph', 'caleb', 'ryan', 'nathan', 'jacob', 'andrew', 'aiden',
+      'mason', 'matthew', 'elijah', 'aaron', 'sebastian', 'nicholas', 'connor', 'ian', 'alex',
+      'alexander', 'brandon', 'zachary', 'kevin', 'jason', 'justin', 'tyler', 'kyle', 'dylan',
+      'cameron', 'evan', 'jordan', 'jake', 'marcus', 'steve', 'peter', 'paul', 'mark', 'john',
+      'robert', 'richard', 'william', 'edward', 'frank', 'samuel', 'tom', 'harrison']
+    for (const w of femaleWords) { if (name.includes(w)) return 'female' }
+    for (const w of maleWords) { if (name.includes(w)) return 'male' }
+    return 'all'
   }
 
   const filtered = useMemo(() => {
-    if (gender === 'all') return voices
-    return voices.filter(v => getGender(v) === gender)
+    const valid = voices.filter(Boolean)
+    if (gender === 'all') return valid
+    return valid.filter(v => getGender(v) === gender)
   }, [voices, gender])
 
-  const selectedVoice = voices.find(v => v.voice_id === selected)
+  const selectedVoice = voices.find(v => v && v.voice_id === selected)
 
   return (
     <div>
-      {/* Gender filter buttons */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-        {(['all', 'female', 'male'] as Gender[]).map(g => (
-          <button
-            key={g}
-            className="btn btn-sm"
-            style={{
-              flex: 1,
-              padding: '4px 8px',
-              border: 'none',
-              borderRadius: 6,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              background: gender === g
-                ? g === 'female' ? '#e84393' : g === 'male' ? '#0984e3' : 'var(--accent)'
-                : 'var(--surface-2)',
-              color: gender === g ? '#fff' : 'var(--text-dim)',
-            }}
-            onClick={() => setGender(g)}
-          >
-            {g === 'all' ? '👥 All' : g === 'female' ? '👩 Woman' : '👨 Man'}
-          </button>
-        ))}
+      {/* Voice selector button */}
+      <label style={{ marginBottom: 8 }}>Voice</label>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '10px 14px',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer',
+          transition: 'border-color 0.15s',
+        }}
+        className="voice-selector-trigger"
+      >
+        <div style={{
+          width: 28, height: 28, borderRadius: 8,
+          background: selectedVoice
+            ? getGender(selectedVoice) === 'female' ? 'var(--pink)' : '#0984e3'
+            : 'var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 12, fontWeight: 700, color: 'white', flexShrink: 0,
+        }}>
+          {selectedVoice ? selectedVoice.name.charAt(0).toUpperCase() : '?'}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {selectedVoice ? selectedVoice.name : 'Select a voice'}
+          </div>
+          {selectedVoice?.labels?.accent && (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>
+              {selectedVoice.labels.accent}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', textAlign: 'right' }}>
+          {selectedVoice && getGender(selectedVoice) !== 'all' ? getGender(selectedVoice) : ''}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          ▼
+        </div>
       </div>
 
-      {/* Voice selector */}
-      <select value={selected} onChange={e => onChange(e.target.value)}>
-        {filtered.length === 0 && <option value="">No voices match</option>}
-        {filtered.map(v => {
-          const labels = v.labels ?? {}
-          const accent = labels.accent ? ` · ${labels.accent}` : ''
-          const g = getGender(v)
-          const tag = g !== 'all' ? ` [${g}]` : ''
-          return (
-            <option key={v.voice_id} value={v.voice_id}>
-              {v.name}{tag}{accent}
-            </option>
-          )
-        })}
-      </select>
+      {/* Dropdown */}
+      {open && (
+        <div style={{
+          marginTop: 4,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          maxHeight: 320,
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          {/* Gender filter */}
+          <div style={{ display: 'flex', gap: 4, padding: '8px 8px 4px', borderBottom: '1px solid var(--border)' }}>
+            {(['all', 'female', 'male'] as Gender[]).map(g => (
+              <button
+                key={g}
+                className={`gender-btn${gender === g ? ' active' : ''}`}
+                style={gender === g ? {
+                  background: g === 'female' ? 'var(--pink)' : g === 'male' ? '#0984e3' : 'var(--accent)',
+                  borderColor: g === 'female' ? 'var(--pink)' : g === 'male' ? '#0984e3' : 'var(--accent)',
+                  color: 'white',
+                } : {}}
+                onClick={() => setGender(g)}
+              >
+                {g === 'all' ? 'All' : g === 'female' ? 'F' : 'M'}
+              </button>
+            ))}
+          </div>
 
-      {/* Selected voice info */}
-      {selectedVoice && (
-        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
-          {selectedVoice.voice_id.slice(0, 8)}…
-          {selectedVoice.labels?.gender ? ` · ${selectedVoice.labels.gender}` : ''}
-          {selectedVoice.labels?.accent ? ` · ${selectedVoice.labels.accent}` : ''}
+          {/* Voice list */}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {filtered.filter(Boolean).map(v => {
+              const g = getGender(v)
+              const isSelected = v.voice_id === selected
+              return (
+                <div
+                  key={v.voice_id}
+                  onClick={() => { onChange(v.voice_id); setOpen(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 12px', cursor: 'pointer',
+                    background: isSelected ? 'var(--accent-subtle)' : 'transparent',
+                    borderLeft: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--surface-2)' }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <div style={{
+                    width: 24, height: 24, borderRadius: 6,
+                    background: g === 'female' ? 'var(--pink)' : g === 'male' ? '#0984e3' : 'var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0,
+                  }}>
+                    {g === 'female' ? 'F' : g === 'male' ? 'M' : '?'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {v.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>
+                      {v.labels?.accent ?? ''}
+                    </div>
+                  </div>
+                  {isSelected && <div style={{ color: 'var(--accent)', fontSize: 14 }}>✓</div>}
+                </div>
+              )
+            })}
+            {filtered.length === 0 && (
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-dim)', fontSize: 13 }}>
+                No voices match
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

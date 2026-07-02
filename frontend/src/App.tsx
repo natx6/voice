@@ -1,15 +1,14 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import type { TabName, VoiceSettings, HistoryEntry, VoiceInfo } from './types'
+import { useState, useEffect, useCallback } from 'react'
+import type { VoiceSettings, HistoryEntry, VoiceInfo } from './types'
 import * as api from './api'
-import RecordTab from './components/RecordTab'
 import TTSTab from './components/TTSTab'
 import HistoryTab from './components/HistoryTab'
-import SettingsTab from './components/SettingsTab'
+import WalletStatus from './components/WalletStatus'
 
-const STORAGE_KEY = 'voice-studio-settings'
-const VOICE_KEY = 'voice-studio-voice'
-const TTS_RAW_KEY = 'voice-studio-tts-raw'
-const TTS_REFINED_KEY = 'voice-studio-tts-refined'
+const STORAGE_KEY = 'sh-settings'
+const VOICE_KEY = 'sh-voice'
+const TTS_RAW_KEY = 'sh-tts-raw'
+const TTS_REFINED_KEY = 'sh-tts-refined'
 
 const DEFAULT_SETTINGS: VoiceSettings = {
   stability: 0.30,
@@ -35,25 +34,13 @@ function loadVoice(): string {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<TabName>('record')
+  const [tab, setTab] = useState<'create' | 'history'>('create')
   const [status, setStatus] = useState<string>('connecting')
   const [voices, setVoices] = useState<VoiceInfo[]>([])
   const [selectedVoice, setSelectedVoice] = useState<string>(loadVoice)
-  const [settings, setSettings] = useState<VoiceSettings>(loadSettings)
+  const [settings] = useState<VoiceSettings>(loadSettings)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [toast, setToast] = useState<string | null>(null)
-
-  // ── Persisted tab state (survives tab switches) ──
-  const [ttsRawText, setTtsRawText] = useState(() => {
-    try { return localStorage.getItem(TTS_RAW_KEY) || '' } catch { return '' }
-  })
-  const [ttsRefinedText, setTtsRefinedText] = useState<string | null>(() => {
-    try { return localStorage.getItem(TTS_REFINED_KEY) } catch { return null }
-  })
-  const [ttsLastFile, setTtsLastFile] = useState<string | null>(null)
-  const [ttsDurationSecs, setTtsDurationSecs] = useState(0)
-  const [recordLastFile, setRecordLastFile] = useState<string | null>(null)
-  const [recordDurationSecs, setRecordDurationSecs] = useState(0)
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -61,18 +48,14 @@ export default function App() {
   }, [])
 
   // ── Load status + voices on mount ──
-
   useEffect(() => {
     api.getStatus()
-      .then(s => {
-        setStatus(s.status === 'ok' ? 'online' : 'error')
-      })
+      .then(s => setStatus(s.status === 'ok' ? 'online' : 'error'))
       .catch(() => setStatus('offline'))
 
     api.getVoices()
       .then(v => {
         setVoices(v)
-        // If saved voice exists and is in the list, keep it; else use first
         const saved = loadVoice()
         if (saved && v.some(vo => vo.voice_id === saved)) {
           setSelectedVoice(saved)
@@ -83,88 +66,64 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  // ── Persist settings, voice, and TTS text to localStorage ──
+  // ── Persist ──
+  useEffect(() => { try { localStorage.setItem(VOICE_KEY, selectedVoice) } catch {} }, [selectedVoice])
 
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)) } catch {}
-  }, [settings])
+  // ── Persisted tab state ──
+  const [ttsRawText, setTtsRawText] = useState(() => {
+    try { return localStorage.getItem(TTS_RAW_KEY) || '' } catch { return '' }
+  })
+  const [ttsRefinedText, setTtsRefinedText] = useState<string | null>(() => {
+    try { return localStorage.getItem(TTS_REFINED_KEY) } catch { return null }
+  })
+  const [ttsLastFile, setTtsLastFile] = useState<string | null>(null)
+  const [ttsDurationSecs, setTtsDurationSecs] = useState(0)
 
-  useEffect(() => {
-    try { localStorage.setItem(VOICE_KEY, selectedVoice) } catch {}
-  }, [selectedVoice])
-
-  useEffect(() => {
-    try { localStorage.setItem(TTS_RAW_KEY, ttsRawText) } catch {}
-  }, [ttsRawText])
-
+  useEffect(() => { try { localStorage.setItem(TTS_RAW_KEY, ttsRawText) } catch {} }, [ttsRawText])
   useEffect(() => {
     if (ttsRefinedText !== null) {
       try { localStorage.setItem(TTS_REFINED_KEY, ttsRefinedText) } catch {}
     }
   }, [ttsRefinedText])
 
-  // ── Refresh history when tab changes ──
-
   useEffect(() => {
     if (tab === 'history') {
-      api.getHistory()
-        .then(setHistory)
-        .catch(() => {})
+      api.getHistory().then(setHistory).catch(() => {})
     }
   }, [tab])
 
   const refreshHistory = useCallback(async () => {
-    try {
-      const h = await api.getHistory()
-      setHistory(h)
-    } catch {}
+    try { setHistory(await api.getHistory()) } catch {}
   }, [])
 
   return (
     <>
       <header>
-        <div>
-          <h1>🎙️ Voice Studio</h1>
-          <div className="subtitle">ElevenLabs Voice Changer</div>
+        <div className="brand">
+          <div className="logo">sh</div>
+          <div>
+            <h1>soundhuman</h1>
+            <div className="subtitle">Text that sounds like you.</div>
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className={`status-dot ${status}`} />
-          <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-            {status === 'online' ? 'Connected' : status === 'connecting' ? 'Connecting…' : 'Offline'}
-          </span>
+          <WalletStatus />
+          <div className={`status-badge ${status}`} style={{ padding: '4px 8px' }}>
+            <span className={`status-dot ${status}`} />
+          </div>
         </div>
       </header>
 
       <div className="tab-bar">
-        {(['record', 'tts', 'history', 'settings'] as TabName[]).map(t => (
-          <button
-            key={t}
-            className={tab === t ? 'active' : ''}
-            onClick={() => setTab(t)}
-          >
-            {t === 'record' && '🎤 Record'}
-            {t === 'tts' && '📝 TTS'}
-            {t === 'history' && '📋 History'}
-            {t === 'settings' && '⚙️ Settings'}
-          </button>
-        ))}
+        <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
+          Create
+        </button>
+        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
+          History
+        </button>
       </div>
 
-      {tab === 'record' && (
-        <RecordTab
-          voiceId={selectedVoice}
-          voices={voices}
-          onSelectVoice={setSelectedVoice}
-          settings={settings}
-          onRefreshHistory={refreshHistory}
-          showToast={showToast}
-          lastFile={recordLastFile}
-          durationSecs={recordDurationSecs}
-          onResult={(file, secs) => { setRecordLastFile(file); setRecordDurationSecs(secs) }}
-        />
-      )}
-
-      {tab === 'tts' && (
+      {tab === 'create' && (
         <TTSTab
           voiceId={selectedVoice}
           voices={voices}
@@ -183,20 +142,7 @@ export default function App() {
       )}
 
       {tab === 'history' && (
-        <HistoryTab
-          history={history}
-          onRefresh={refreshHistory}
-          showToast={showToast}
-        />
-      )}
-
-      {tab === 'settings' && (
-        <SettingsTab
-          settings={settings}
-          onChange={setSettings}
-          voices={voices}
-          showToast={showToast}
-        />
+        <HistoryTab history={history} onRefresh={refreshHistory} showToast={showToast} />
       )}
 
       {toast && <div className="toast">{toast}</div>}

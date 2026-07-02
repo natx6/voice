@@ -92,7 +92,7 @@ export default function RecordTab({
   return (
     <div>
       <div className="card">
-        <div className="card-title">🎤 Record Voice Note</div>
+        <div className="card-title">Record Voice Note</div>
 
         <VoicePicker voices={voices} selected={voiceId} onChange={onSelectVoice} />
         <VUMeter recording={recording} />
@@ -100,11 +100,11 @@ export default function RecordTab({
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           {!recording ? (
             <button className="btn btn-primary" onClick={handleStartRecord}>
-              🔴 Start Recording
+              Start Recording
             </button>
           ) : (
             <button className="btn btn-danger" onClick={handleStopRecord}>
-              ⏹ Stop Recording ({elapsed}s)
+              Stop Recording ({elapsed}s)
             </button>
           )}
         </div>
@@ -112,7 +112,7 @@ export default function RecordTab({
 
       {lastFile && !recording && (
         <div className="card">
-          <div className="card-title">✅ Recorded</div>
+          <div className="card-title">Recorded</div>
           <p style={{ marginBottom: 12, fontSize: 14 }}>
             {durationSecs}s of audio captured
           </p>
@@ -122,7 +122,7 @@ export default function RecordTab({
             disabled={converting}
             style={{ width: '100%' }}
           >
-            {converting ? '⏳ Converting...' : '🔄 Convert with ElevenLabs'}
+            {converting ? 'Converting...' : 'Convert with ElevenLabs'}
           </button>
         </div>
       )}

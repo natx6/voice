@@ -2,11 +2,15 @@ import type { VoiceSettings, HistoryEntry, VoiceInfo } from './types'
 
 const BASE = '/api'
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
     ...init,
   })
+  // Check if aborted
+  if (init?.signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => 'Unknown error')
     throw new Error(`${res.status}: ${text.slice(0, 200)}`)
@@ -83,13 +87,27 @@ export interface TTSResult {
   duration_secs: number
   chars: number
   history_id: number
+  seed?: number
 }
 
-export async function generateTTS(text: string, voiceId: string, settings: VoiceSettings): Promise<TTSResult> {
+function getWallet(): string {
+  try { return localStorage.getItem('sh-wallet') || '' } catch { return '' }
+}
+
+export async function generateTTS(text: string, voiceId: string, settings: VoiceSettings, signal?: AbortSignal): Promise<TTSResult> {
   return fetchJson('/tts', {
     method: 'POST',
-    body: JSON.stringify({ text, voice_id: voiceId, voice_settings: settings }),
+    body: JSON.stringify({ text, voice_id: voiceId, voice_settings: settings, wallet: getWallet() }),
+    signal,
   })
+}
+
+export async function generateTTSVariations(text: string, voiceId: string, settings: VoiceSettings, count?: number): Promise<TTSResult[]> {
+  const res = await fetchJson<{ status: string; variations: TTSResult[] }>('/tts/variations', {
+    method: 'POST',
+    body: JSON.stringify({ text, voice_id: voiceId, voice_settings: settings, count: count ?? 3, wallet: getWallet() }),
+  })
+  return res.variations
 }
 
 // ── Playback ──

@@ -40,7 +40,7 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
     try {
       const result = await api.designVoice(designDesc)
       if (result.status === 'ok') {
-        showToast(`✨ New voice created: ${result.voice_name} (${result.voice_id.slice(0, 8)}...)`)
+        showToast(`New voice created: ${result.voice_name} (${result.voice_id.slice(0, 8)}...)`)
         setDesignDesc('')
       } else {
         showToast('Voice design failed — check the API key and plan')
@@ -61,7 +61,7 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
     try {
       const result = await api.blendVoices(valid)
       if (result.status === 'ok') {
-        showToast(`🔀 Blend created: ${result.voice_name}`)
+        showToast(`Blend created: ${result.voice_name}`)
       } else {
         showToast('Blend failed — check voice IDs')
       }
@@ -186,7 +186,7 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
 
       {/* ── Presets ── */}
       <div className="card">
-        <div className="card-title">⭐ Quick Presets</div>
+        <div className="card-title">Quick Presets</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {presets.map(p => (
             <button
@@ -202,7 +202,7 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
 
       {/* ── Voice Design ── */}
       <div className="card">
-        <div className="card-title">✨ Design a New Voice</div>
+        <div className="card-title">Design a New Voice</div>
         <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
           Describe the voice you want and ElevenLabs will create it.
         </p>
@@ -216,13 +216,13 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
           />
         </div>
         <button className="btn btn-primary" onClick={handleDesign} disabled={designing || !designDesc.trim()}>
-          {designing ? '⏳ Designing...' : '✨ Create Voice'}
+          {designing ? 'Designing...' : 'Create Voice'}
         </button>
       </div>
 
       {/* ── Voice Blend ── */}
       <div className="card">
-        <div className="card-title">🔀 Blend Voices</div>
+        <div className="card-title">Blend Voices</div>
         <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 12 }}>
           Mix 2–4 existing voices to create a unique hybrid.
         </p>
@@ -266,7 +266,7 @@ export default function SettingsTab({ settings, onChange, voices, showToast }: P
             onClick={handleBlend}
             disabled={blending || blendIds.filter(b => b.trim()).length < 2}
           >
-            {blending ? '⏳ Blending...' : '🔀 Create Blend'}
+            {blending ? 'Blending...' : 'Create Blend'}
           </button>
         </div>
       </div>

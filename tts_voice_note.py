@@ -33,7 +33,7 @@ from voice_converter import pulse_name, VIRTUAL_SINK_NAME, VoiceSettings, VOICE_
 TEMP_DIR = Path(tempfile.gettempdir()) / "tts_voice_note"
 TEMP_CONV = TEMP_DIR / "tts_output.raw"
 OUTPUT_RATE = 24000  # Hz
-MODEL_ID = "eleven_turbo_v2_5"
+MODEL_ID = "eleven_v3"
 OUTPUT_FMT = "pcm_24000"
 
 # ── Session History ────────────────────────────────────────────────────────
@@ -138,7 +138,8 @@ class SessionHistory:
 
 # ---- ElevenLabs TTS ----
 def tts_stream(api_key: str, voice_id: str, text: str,
-               voice_settings: Optional[VoiceSettings] = None) -> Iterator[bytes]:
+               voice_settings: Optional[VoiceSettings] = None,
+               seed: Optional[int] = None) -> Iterator[bytes]:
     """Stream TTS audio from ElevenLabs. Yields raw PCM chunks."""
     from elevenlabs import ElevenLabs, VoiceSettings as ELVoiceSettings
     client = ElevenLabs(api_key=api_key)
@@ -151,14 +152,19 @@ def tts_stream(api_key: str, voice_id: str, text: str,
         use_speaker_boost=vs.speaker_boost if vs.speaker_boost else None,
         speed=vs.speed,
     )
-    return client.text_to_speech.stream(
+    kwargs = dict(
         voice_id=voice_id,
         text=text,
         model_id=MODEL_ID,
         output_format=OUTPUT_FMT,
-        optimize_streaming_latency=4,
         voice_settings=el_vs,
     )
+    if seed is not None:
+        kwargs["seed"] = seed
+    # v3 model doesn't support optimize_streaming_latency
+    if "v3" not in MODEL_ID:
+        kwargs["optimize_streaming_latency"] = 4
+    return client.text_to_speech.stream(**kwargs)
 
 
 # ---- Audio helpers ----
