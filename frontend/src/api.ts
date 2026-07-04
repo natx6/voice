@@ -3,19 +3,43 @@ import type { VoiceSettings, HistoryEntry, VoiceInfo } from './types'
 const BASE = '/api'
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  })
-  // Check if aborted
-  if (init?.signal?.aborted) {
-    throw new DOMException('Aborted', 'AbortError')
+  // 120s timeout for audio generation, 15s for other calls
+  const isGen = url.includes('/tts') || url.includes('/refine-text') || url.includes('/voices')
+  const timeoutMs = isGen ? 120000 : 15000
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+
+  // Combine caller's signal with timeout signal
+  const callSignal = init?.signal
+  const combinedSignal = timeoutController.signal
+
+  if (callSignal) {
+    callSignal.addEventListener('abort', () => timeoutController.abort())
   }
-  if (!res.ok) {
-    const text = await res.text().catch(() => 'Unknown error')
-    throw new Error(`${res.status}: ${text.slice(0, 200)}`)
+
+  try {
+    const res = await fetch(`${BASE}${url}`, {
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+      ...init,
+      signal: combinedSignal,
+    })
+    clearTimeout(timeoutId)
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      throw new Error(`${res.status}: ${text.slice(0, 200)}`)
+    }
+    return res.json()
+  } catch (e: any) {
+    clearTimeout(timeoutId)
+    if (e.name === 'AbortError') {
+      if (callSignal?.aborted) {
+        throw e // caller's cancel, re-throw as-is
+      }
+      throw new Error(isGen ? 'Still loading, taking longer than expected...' : 'Connection timed out — server may be offline')
+    }
+    throw e
   }
-  return res.json()
 }
 
 // ── Status ──
@@ -172,6 +196,130 @@ export async function refineText(text: string, style?: string): Promise<RefineRe
     method: 'POST',
     body: JSON.stringify({ text, style: style ?? 'conversational' }),
   })
+}
+
+// ── Auth ──
+
+let _token: string | null = null
+
+export function setToken(t: string | null) {
+  _token = t
+  if (t) localStorage.setItem('sh-auth-token', t)
+  else localStorage.removeItem('sh-auth-token')
+}
+
+export function getToken(): string | null {
+  if (!_token) _token = localStorage.getItem('sh-auth-token')
+  return _token
+}
+
+function authHeaders(): Record<string, string> {
+  const t = getToken()
+  return t ? { 'Authorization': `Bearer ${t}` } : {}
+}
+
+export interface AuthUser {
+  id: number
+  email: string
+  role: string
+  wallet: string
+  credits?: number
+}
+
+export async function signup(email: string, password: string, inviteCode: string): Promise<{ token: string; user: AuthUser }> {
+  const res = await fetchJson<{ status: string; token: string; user: AuthUser }>('/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, invite_code: inviteCode }),
+  })
+  setToken(res.token)
+  return res
+}
+
+export async function login(email: string, password: string): Promise<{ token: string; user: AuthUser }> {
+  const res = await fetchJson<{ status: string; token: string; user: AuthUser }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+  setToken(res.token)
+  return res
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await fetchJson('/auth/logout', { method: 'POST', headers: authHeaders() })
+  } catch {}
+  setToken(null)
+}
+
+export async function getMe(): Promise<AuthUser> {
+  const res = await fetchJson<{ status: string; user: AuthUser }>('/auth/me', { headers: authHeaders() })
+  return res.user
+}
+
+export async function updateWallet(wallet: string): Promise<void> {
+  await fetchJson('/auth/wallet', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet }),
+  })
+}
+
+// ── Admin ──
+
+export async function getAdminUsers(): Promise<AuthUser[]> {
+  const res = await fetchJson<{ users: AuthUser[] }>('/admin/users', { headers: authHeaders() })
+  return res.users
+}
+
+export async function createInviteCodes(count: number): Promise<string[]> {
+  const res = await fetchJson<{ codes: string[] }>('/admin/invite', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ count }),
+  })
+  return res.codes
+}
+
+export async function getInviteCodes(): Promise<any[]> {
+  const res = await fetchJson<{ invites: any[] }>('/admin/invites', { headers: authHeaders() })
+  return res.invites
+}
+
+export async function getAdminSettings(): Promise<Record<string, string>> {
+  const res = await fetchJson<{ settings: Record<string, string> }>('/admin/settings', { headers: authHeaders() })
+  return res.settings
+}
+
+export async function updateAdminSettings(settings: Record<string, string>): Promise<void> {
+  await fetchJson('/admin/settings', {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+}
+
+export async function createUserInviteCode(): Promise<string> {
+  const res = await fetchJson<{ code: string }>('/settings/invite', {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+  return res.code
+}
+
+export async function createApiKey(name?: string): Promise<{ api_keys: any[]; key: string }> {
+  return fetchJson(`/keys/create?name=${encodeURIComponent(name || '')}`, {
+    method: 'POST',
+    headers: authHeaders(),
+  })
+}
+
+export async function getApiKeys(): Promise<any[]> {
+  const res = await fetchJson<{ api_keys: any[] }>('/keys', { headers: authHeaders() })
+  return res.api_keys
+}
+
+export async function deleteApiKey(key: string): Promise<void> {
+  await fetchJson(`/keys/${encodeURIComponent(key)}`, { method: 'DELETE', headers: authHeaders() })
 }
 
 // ── Voice Design ──

@@ -131,6 +131,7 @@ export default function HistoryTab({ history, onRefresh, showToast }: Props) {
             </div>
             <div className="meta">
               {entry.timestamp.slice(0, 8)} · {entry.duration_secs}s
+              {entry.voice_name && entry.voice_name !== entry.voice_id ? ` · ${entry.voice_name.slice(0, 25)}` : ''}
               {entry.text && ` · "${entry.text.slice(0, 30)}${entry.text.length > 30 ? '...' : ''}"`}
             </div>
           </div>

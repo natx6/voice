@@ -3,98 +3,72 @@ import type { VoiceSettings, HistoryEntry, VoiceInfo } from './types'
 import * as api from './api'
 import TTSTab from './components/TTSTab'
 import HistoryTab from './components/HistoryTab'
+import SettingsPage from './components/SettingsPage'
+import AdminPage from './components/AdminPage'
+import OnboardPage from './components/OnboardPage'
 import WalletStatus from './components/WalletStatus'
 
-const STORAGE_KEY = 'sh-settings'
-const VOICE_KEY = 'sh-voice'
-const TTS_RAW_KEY = 'sh-tts-raw'
-const TTS_REFINED_KEY = 'sh-tts-refined'
-
 const DEFAULT_SETTINGS: VoiceSettings = {
-  stability: 0.30,
-  similarity_boost: 0.95,
-  style_exaggeration: 0,
-  speaker_boost: false,
-  speed: 1.0,
-  character: 'studio',
-}
-
-function loadSettings(): VoiceSettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) }
-  } catch {}
-  return DEFAULT_SETTINGS
-}
-
-function loadVoice(): string {
-  try {
-    return localStorage.getItem(VOICE_KEY) || ''
-  } catch { return '' }
+  stability: 0.30, similarity_boost: 0.95, style_exaggeration: 0,
+  speaker_boost: false, speed: 1.0, character: 'studio',
 }
 
 export default function App() {
-  const [tab, setTab] = useState<'create' | 'history'>('create')
+  const hasAdminToken = (() => { try { return !!localStorage.getItem('sh-admin-token') } catch { return false } })()
+  const [tab, setTab] = useState<string>('create')
   const [status, setStatus] = useState<string>('connecting')
   const [voices, setVoices] = useState<VoiceInfo[]>([])
-  const [selectedVoice, setSelectedVoice] = useState<string>(loadVoice)
-  const [settings] = useState<VoiceSettings>(loadSettings)
+  const [selectedVoice, setSelectedVoice] = useState<string>('')
+  const [settings] = useState<VoiceSettings>(DEFAULT_SETTINGS)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [toast, setToast] = useState<string | null>(null)
+  const [username, setUsername] = useState<string>(() => {
+    try { return localStorage.getItem('sh-user') || '' } catch { return '' }
+  })
 
   const showToast = useCallback((msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3000)
+    setToast(msg); setTimeout(() => setToast(null), 3000)
   }, [])
 
-  // ── Load status + voices on mount ──
+  // Load status + voices on mount (cached for instant display)
   useEffect(() => {
-    api.getStatus()
-      .then(s => setStatus(s.status === 'ok' ? 'online' : 'error'))
-      .catch(() => setStatus('offline'))
+    api.getStatus().then(s => setStatus(s.status === 'ok' ? 'online' : 'error')).catch(() => setStatus('offline'))
 
-    api.getVoices()
-      .then(v => {
-        setVoices(v)
-        const saved = loadVoice()
-        if (saved && v.some(vo => vo.voice_id === saved)) {
-          setSelectedVoice(saved)
-        } else if (v.length > 0) {
-          setSelectedVoice(v[0].voice_id)
-        }
-      })
-      .catch(() => {})
+    // Load cached voices instantly, then refresh in background
+    const cached = (() => {
+      try { const r = localStorage.getItem('sh-voices-cache'); return r ? JSON.parse(r) : null } catch { return null }
+    })()
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      setVoices(cached)
+    }
+
+    api.getVoices().then(v => {
+      setVoices(v)
+      // Cache for next load
+      try { localStorage.setItem('sh-voices-cache', JSON.stringify(v)) } catch {}
+      const saved = (() => { try { return localStorage.getItem('sh-voice') || '' } catch { return '' } })()
+      if (saved && v.some(vo => vo.voice_id === saved)) setSelectedVoice(saved)
+      else if (v.length > 0) setSelectedVoice(v[0].voice_id)
+    }).catch((e) => console.error('Voices failed to load:', e))
   }, [])
 
-  // ── Persist ──
-  useEffect(() => { try { localStorage.setItem(VOICE_KEY, selectedVoice) } catch {} }, [selectedVoice])
+  useEffect(() => { try { localStorage.setItem('sh-voice', selectedVoice) } catch {} }, [selectedVoice])
 
-  // ── Persisted tab state ──
-  const [ttsRawText, setTtsRawText] = useState(() => {
-    try { return localStorage.getItem(TTS_RAW_KEY) || '' } catch { return '' }
-  })
-  const [ttsRefinedText, setTtsRefinedText] = useState<string | null>(() => {
-    try { return localStorage.getItem(TTS_REFINED_KEY) } catch { return null }
-  })
+  // Persisted tab state
+  const [ttsRawText, setTtsRawText] = useState(() => { try { return localStorage.getItem('sh-tts-raw') || '' } catch { return '' } })
+  const [ttsRefinedText, setTtsRefinedText] = useState<string | null>(() => { try { return localStorage.getItem('sh-tts-refined') } catch { return null } })
   const [ttsLastFile, setTtsLastFile] = useState<string | null>(null)
   const [ttsDurationSecs, setTtsDurationSecs] = useState(0)
 
-  useEffect(() => { try { localStorage.setItem(TTS_RAW_KEY, ttsRawText) } catch {} }, [ttsRawText])
-  useEffect(() => {
-    if (ttsRefinedText !== null) {
-      try { localStorage.setItem(TTS_REFINED_KEY, ttsRefinedText) } catch {}
-    }
-  }, [ttsRefinedText])
+  useEffect(() => { try { localStorage.setItem('sh-tts-raw', ttsRawText) } catch {} }, [ttsRawText])
+  useEffect(() => { if (ttsRefinedText !== null) try { localStorage.setItem('sh-tts-refined', ttsRefinedText) } catch {} }, [ttsRefinedText])
 
-  useEffect(() => {
-    if (tab === 'history') {
-      api.getHistory().then(setHistory).catch(() => {})
-    }
-  }, [tab])
+  useEffect(() => { if (tab === 'history') api.getHistory().then(setHistory).catch(() => {}) }, [tab])
+  const refreshHistory = useCallback(async () => { try { setHistory(await api.getHistory()) } catch {} }, [])
 
-  const refreshHistory = useCallback(async () => {
-    try { setHistory(await api.getHistory()) } catch {}
-  }, [])
+  if (!username) {
+    return <OnboardPage onComplete={(name) => setUsername(name)} />
+  }
 
   return (
     <>
@@ -103,7 +77,7 @@ export default function App() {
           <div className="logo">sh</div>
           <div>
             <h1>soundhuman</h1>
-            <div className="subtitle">Text that sounds like you.</div>
+            <div className="subtitle">@{username}</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -115,35 +89,27 @@ export default function App() {
       </header>
 
       <div className="tab-bar">
-        <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
-          Create
-        </button>
-        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
-          History
-        </button>
+        <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>Create</button>
+        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>History</button>
+        <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>Settings</button>
+        {hasAdminToken && (
+          <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin') as any}>Admin</button>
+        )}
       </div>
 
       {tab === 'create' && (
-        <TTSTab
-          voiceId={selectedVoice}
-          voices={voices}
-          onSelectVoice={setSelectedVoice}
-          settings={settings}
-          onRefreshHistory={refreshHistory}
-          showToast={showToast}
-          rawText={ttsRawText}
-          refinedText={ttsRefinedText}
-          lastFile={ttsLastFile}
-          durationSecs={ttsDurationSecs}
-          onRawTextChange={setTtsRawText}
-          onRefinedTextChange={setTtsRefinedText}
-          onResult={(file, secs) => { setTtsLastFile(file); setTtsDurationSecs(secs) }}
-        />
+        <TTSTab voiceId={selectedVoice} voices={voices} onSelectVoice={setSelectedVoice}
+          settings={settings} onRefreshHistory={refreshHistory} showToast={showToast}
+          rawText={ttsRawText} refinedText={ttsRefinedText} lastFile={ttsLastFile} durationSecs={ttsDurationSecs}
+          onRawTextChange={setTtsRawText} onRefinedTextChange={setTtsRefinedText}
+          onResult={(file, secs) => { setTtsLastFile(file); setTtsDurationSecs(secs) }} />
       )}
 
-      {tab === 'history' && (
-        <HistoryTab history={history} onRefresh={refreshHistory} showToast={showToast} />
-      )}
+      {tab === 'history' && <HistoryTab history={history} onRefresh={refreshHistory} showToast={showToast} />}
+
+      {tab === 'settings' && <SettingsPage />}
+
+      {tab === 'admin' && hasAdminToken && <AdminPage />}
 
       {toast && <div className="toast">{toast}</div>}
     </>

@@ -105,6 +105,27 @@ export default function TTSTab({
     finally { setRefining(false) }
   }, [rawText, flair, showToast, onRefinedTextChange])
 
+  const handleGenerateDirect = useCallback(async () => {
+    // Skip refinement, generate directly from raw text (user typed their own tags)
+    if (!rawText.trim() || !voiceId) return
+    setGenerating(true)
+    setGenPct(0)
+    const estTotalSecs = Math.max(3, Math.round(rawText.length / 20))
+    const timerStart = Date.now()
+    genTimerRef.current = setInterval(() => {
+      const elapsed = (Date.now() - timerStart) / 1000
+      setGenPct(Math.min(95, (elapsed / estTotalSecs) * 100))
+    }, 200)
+    try {
+      const result = await api.generateTTS(rawText, voiceId, settings)
+      onResult(result.file_path, result.duration_secs)
+      setStage('done')
+      showToast(`Generated ${result.duration_secs}s`)
+      onRefreshHistory()
+    } catch (e: any) { showToast(`Generation failed: ${e.message}`) }
+    finally { setGenerating(false); setGenPct(0); if (genTimerRef.current) clearInterval(genTimerRef.current) }
+  }, [rawText, voiceId, settings, showToast, onResult, onRefreshHistory])
+
   const handleGenerateVariations = useCallback(async () => {
     const text = refinedText ?? rawText
     if (!text.trim() || !voiceId) return
@@ -195,6 +216,9 @@ export default function TTSTab({
               placeholder="Paste what you want to say..." rows={6}
               style={{ fontSize: 15, lineHeight: 1.6, minHeight: 160 }} autoFocus />
           </div>
+          <div style={{ marginTop: 12 }}>
+            <VoicePicker voices={voices} selected={voiceId} onChange={onSelectVoice} />
+          </div>
           {rawText.trim().length > 0 && (
             <div style={{ marginTop: 12 }}>
               {refining ? (
@@ -204,7 +228,13 @@ export default function TTSTab({
                   <LoadingDots label="Refining..." />
                 </div>
               ) : (
-                <button className="btn btn-primary btn-lg btn-block" onClick={handleRefine}>Make it sound human</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button className="btn btn-primary btn-lg btn-block" onClick={handleRefine}>Make it sound human</button>
+                  <button className="btn btn-ghost btn-block" onClick={handleGenerateDirect}
+                    style={{ fontSize: 13, padding: '10px 20px' }}>
+                    Generate directly (keep my tags)
+                  </button>
+                </div>
               )}
             </div>
           )}

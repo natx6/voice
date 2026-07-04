@@ -77,15 +77,17 @@ class HistoryEntry:
 
 
 class SessionHistory:
-    def __init__(self):
+    def __init__(self, file_path: Optional[Path] = None):
+        self._file_path = file_path or HISTORY_FILE
         self.entries: list[HistoryEntry] = []
         self._next_id = 1
         self._load()
 
     def _load(self):
-        if HISTORY_FILE.exists():
+        fp = self._file_path
+        if fp.exists():
             try:
-                data = json.loads(HISTORY_FILE.read_text())
+                data = json.loads(fp.read_text())
                 self.entries = [HistoryEntry.from_dict(e) for e in data.get("entries", [])]
                 self._next_id = data.get("next_id", max((e.id for e in self.entries), default=0) + 1)
             except Exception:
@@ -93,9 +95,9 @@ class SessionHistory:
                 self._next_id = 1
 
     def _save(self):
-        HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
         data = {"next_id": self._next_id, "entries": [e.to_dict() for e in self.entries]}
-        HISTORY_FILE.write_text(json.dumps(data, indent=2))
+        self._file_path.write_text(json.dumps(data, indent=2))
 
     def add(self, entry: HistoryEntry) -> int:
         entry.id = self._next_id

@@ -178,3 +178,57 @@ class StatusResponse(BaseModel):
     audio_sinks: list[str]
     history_count: int
     version: str = "1.0.0"
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────
+
+class SignupRequest(BaseModel):
+    email: str
+    password: str
+    invite_code: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    status: str
+    token: str = ""
+    user: dict = {}
+
+
+class InviteResponse(BaseModel):
+    status: str
+    code: str = ""
+
+
+class AdminCreateInviteRequest(BaseModel):
+    count: int = 1
+
+
+class AdminUpdateSettingsRequest(BaseModel):
+    receiving_wallet: str = ""
+    allow_signups: bool = True
+
+
+class AdminUsersResponse(BaseModel):
+    users: list[dict]
+
+
+class AdminInvitesResponse(BaseModel):
+    invites: list[dict]
+
+
+class AdminSettingsResponse(BaseModel):
+    settings: dict
+
+
+class ApiKeyResponse(BaseModel):
+    api_keys: list[dict]
+    key: str = ""
+
+
+class UpdateWalletRequest(BaseModel):
+    wallet: str = ""

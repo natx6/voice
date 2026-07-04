@@ -5,3 +5,10 @@ __pycache__/
 *.swp
 *.swo
 /voice_changer_tui.py
+.env
+.env.local
+*.env
+node_modules/
+frontend/dist/
+.tmp
+*.tmp

@@ -15,11 +15,13 @@ import asyncio
 import json
 import os
 import sys
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -39,6 +41,8 @@ from api.models import (
 )
 from api.voice_manager import get_manager, VoiceManager
 from api.credits import get_balance, add_credits, deduct_credit, tokens_to_credits
+from api import users
+import re
 from voice_converter import VoiceSettings
 
 
@@ -49,8 +53,8 @@ async def lifespan(app: FastAPI):
     # Startup
     yield
     # Shutdown
-    mgr = get_manager()
-    mgr.cleanup()
+    from api.voice_manager import cleanup_all
+    cleanup_all()
 
 
 app = FastAPI(
@@ -66,6 +70,45 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Rate Limiting & Abuse Prevention ──────────────────────────────────────
+
+_ratelimit: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = 10     # max requests per window per IP
+
+
+def _check_ratelimit(request):
+    """Simple in-memory rate limit per IP. Raises 429 if exceeded."""
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window = _ratelimit[ip]
+    # Prune old entries
+    _ratelimit[ip] = [t for t in window if now - t < _RATE_LIMIT_WINDOW]
+    if len(_ratelimit[ip]) >= _RATE_LIMIT_MAX:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again shortly.")
+    _ratelimit[ip].append(now)
+
+
+def _admin_only(req):
+    """Ensure the credit add endpoint isn't abused. Requires a secret env var."""
+    admin_key = os.environ.get("SOUNDHUMAN_ADMIN_KEY", "")
+    if admin_key:
+        auth = req.headers.get("Authorization", "")
+        if auth != f"Bearer {admin_key}":
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+
+# Free credit grants per IP (prevents creating infinite demo wallets)
+_free_grants: dict[str, int] = defaultdict(int)
+_MAX_FREE_CREDITS_PER_IP = 10  # max free credits total per IP
+
+
+def _check_free_limit(ip: str, amount: int):
+    if _free_grants[ip] + amount > _MAX_FREE_CREDITS_PER_IP:
+        raise HTTPException(status_code=429, detail="Free credit limit reached for this IP")
+    _free_grants[ip] += amount
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -86,7 +129,179 @@ def _require_api_key() -> str:
     return key
 
 
-# ── Status ─────────────────────────────────────────────────────────────────
+
+username_re = re.compile(r"^[a-zA-Z0-9_-]{4,30}$")
+
+# ── Admin token (random URL, no login) ────────────────────────────────
+
+ADMIN_TOKEN_FILE = Path.home() / ".soundhuman" / "admin_token"
+
+
+def _get_admin_token() -> str:
+    if ADMIN_TOKEN_FILE.exists():
+        return ADMIN_TOKEN_FILE.read_text().strip()
+    import secrets
+    token = secrets.token_hex(32)  # 64-char hex
+    ADMIN_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ADMIN_TOKEN_FILE.write_text(token)
+    print(f"\n  ╔══════════════════════════════════════════════════╗")
+    print(f"  ║  ADMIN PANEL                                     ║")
+    print(f"  ║                                                  ║")
+    print(f"  ║  http://localhost:8765/api/admin/login?token={token}  ║")
+    print(f"  ║                                                  ║")
+    print(f"  ╚══════════════════════════════════════════════════╝\n")
+    return token
+
+
+def _require_admin(request: Request):
+    """Check admin token from query param or Authorization header."""
+    token = request.query_params.get("token", "")
+    if not token:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    stored = _get_admin_token()
+    if not token or token != stored:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+
+@app.get("/api/admin/login")
+async def admin_login(request: Request):
+    """Verify admin token. Returns ok if token matches."""
+    try:
+        _require_admin(request)
+        return {"status": "ok", "message": "Admin access granted"}
+    except HTTPException as e:
+        raise e
+
+
+@app.get("/api/payment/wallet")
+async def payment_wallet():
+    """Public endpoint: returns all configured wallet addresses."""
+    p = Path.home() / ".soundhuman" / "settings.json"
+    result = {"sol": "", "ltc": "", "xmr": ""}
+    if p.exists():
+        import json
+        data = json.loads(p.read_text())
+        result["sol"] = data.get("sol_wallet", "")
+        result["ltc"] = data.get("ltc_wallet", "")
+        result["xmr"] = data.get("xmr_wallet", "")
+    return result
+
+
+@app.get("/api/pricing")
+async def get_pricing():
+    """Public endpoint: returns current pricing per credit."""
+    p = Path.home() / ".soundhuman" / "settings.json"
+    cost = 0.005  # default SOL per credit
+    if p.exists():
+        import json
+        data = json.loads(p.read_text())
+        cost = data.get("cost_per_credit", cost)
+    return {"sol_per_credit": cost, "usdc_per_credit": cost * 100}
+
+
+@app.post("/api/recover")
+async def recover(phrase: str = ""):
+    """Restore username by recovery phrase."""
+    if not phrase:
+        raise HTTPException(400, "Recovery phrase required")
+    username = users.restore_by_phrase(phrase)
+    if not username:
+        raise HTTPException(404, "Invalid recovery phrase")
+    user = users.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {"status": "ok", "user": user}
+
+
+@app.get("/api/onboard")
+async def onboard_suggest():
+    return {"suggestion": users.generate_username()}
+
+
+@app.post("/api/onboard")
+async def onboard(username: str = "", invite: str = ""):
+    if not username:
+        return {"suggestion": users.generate_username()}
+    if not username_re.match(username):
+        raise HTTPException(400, "Username must be 4-30 chars, letters/numbers/dashes/underscores")
+    success, err_or_phrase = users.create_user(username, invite)
+    if not success:
+        raise HTTPException(400, err_or_phrase)
+    user = users.get_user(username)
+    return {"status": "ok", "user": user, "recovery_phrase": err_or_phrase if len(err_or_phrase) > 50 else ""}
+
+
+@app.get("/api/user/{username}")
+async def get_user_info(username: str):
+    user = users.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {"user": user}
+
+
+@app.get("/api/admin/users")
+async def admin_list_users(request: Request):
+    _require_admin(request)
+    return {"users": users.get_all_users()}
+
+
+@app.post("/api/admin/credits")
+async def admin_add_credits(request: Request, username: str = "", amount: int = 0):
+    _require_admin(request)
+    if not username or amount <= 0:
+        raise HTTPException(400, "Username and positive amount required")
+    add_credits(username, amount, f"admin:{username}")
+    user = users.get_user(username)
+    return {"status": "ok", "user": user}
+
+
+@app.post("/api/admin/invite")
+async def admin_create_invite(request: Request, username: str = ""):
+    _require_admin(request)
+    if not username:
+        raise HTTPException(400, "Username required")
+    user = users.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    from api.users import _generate_invites
+    codes = _generate_invites(username, 1)
+    return {"status": "ok", "code": codes[0]}
+
+
+@app.get("/api/admin/settings")
+async def admin_get_settings(request: Request):
+    _require_admin(request)
+    p = Path.home() / ".soundhuman" / "settings.json"
+    if p.exists():
+        import json
+        return {"settings": json.loads(p.read_text())}
+    return {"settings": {"receiving_wallet": ""}}
+
+
+@app.post("/api/admin/settings")
+async def admin_update_settings(request: Request,
+                                receiving_wallet: str = "",
+                                cost_per_credit: float = 0.005,
+                                sol_wallet: str = "",
+                                ltc_wallet: str = "",
+                                xmr_wallet: str = ""):
+    _require_admin(request)
+    import json
+    p = Path.home() / ".soundhuman" / "settings.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = {}
+    if p.exists():
+        data = json.loads(p.read_text())
+    data["receiving_wallet"] = receiving_wallet
+    data["cost_per_credit"] = cost_per_credit
+    if sol_wallet: data["sol_wallet"] = sol_wallet
+    if ltc_wallet: data["ltc_wallet"] = ltc_wallet
+    if xmr_wallet: data["xmr_wallet"] = xmr_wallet
+    p.write_text(json.dumps(data, indent=2))
+    return {"status": "ok", "settings": data}
+
 
 @app.get("/api/status", response_model=StatusResponse)
 async def get_status():
@@ -187,8 +402,12 @@ def _deduct_or_raise(wallet: str, amount: int = 1):
             )
 
 
+    return 0
+
 @app.post("/api/tts", response_model=TTSResponse)
-async def text_to_speech(req: TTSRequest):
+async def text_to_speech(req: TTSRequest, request: Request):
+    _check_ratelimit(request)
+    
     mgr = get_manager(_require_api_key())
     vs = _vs_from_model(req.voice_settings)
     _deduct_or_raise(req.wallet, 1)
@@ -202,8 +421,10 @@ async def text_to_speech(req: TTSRequest):
 
 
 @app.post("/api/tts/variations", response_model=TTSVariationsResponse)
-async def tts_variations(req: TTSVariationsRequest):
+async def tts_variations(req: TTSVariationsRequest, request: Request):
     """Generate multiple audio variations with different deliveries."""
+    _check_ratelimit(request)
+    
     mgr = get_manager(_require_api_key())
     vs = _vs_from_model(req.voice_settings)
     count = max(2, min(req.count, 5))
@@ -219,72 +440,94 @@ async def tts_variations(req: TTSVariationsRequest):
 
 # ── Text Refinement ────────────────────────────────────────────────────────
 
-REFINEMENT_PROMPT = """You are a text refiner. Your job is two steps:
-1. ANALYZE the emotional tone of the input text
-2. REWRITE it using the matching emotional style below with ElevenLabs v3 audio tags
+REFINEMENT_PROMPT = """You are a text refiner. Rewrite text into natural speech using ElevenLabs v3 audio tags. Your output is fed directly into v3 TTS — tags control delivery but are not spoken.
 
-## EMOTIONAL STYLES — Match the text to the closest one
+## STEP 1: Analyze the emotional tone of the input
+## STEP 2: Rewrite using these techniques:
 
-### 1. Sad / Heartbroken
-Use constant ellipses (...), lowercase phrasing, heavy bracketed breath tags, fragmented sentences.
-"You want slow, trembling, hesitant delivery."
-"Hey... [sighs] I'm sorry to drop this on you... I just... I really don't know what to do right now. [whispers] Everything just feels so heavy today... honestly, I just kind of need a friend. Call me whenever you can, okay? Bye."
+### CORE TAGS — place strategically throughout text
 
-### 2. Excited / Ecstatic
-Use ALL-CAPS on high-energy words, multiple exclamation marks, run-on sentences, expressive laughter tags.
-"You want rapid-fire, high-pitch delivery."
-"OH MY GOD [giggles] okay you are LITERALLY never going to believe what just happened!!! [laughs] I am shaking right now, like, it actually happened! [gasp] We have to celebrate tonight, seriously, call me back the SECOND you see this!"
+| Tag | What it does |
+|---|---|
+| [laughs] [chuckles] [giggles] | Natural laughter |
+| [sighs] [breaths] [gasp] | Breath and sigh events |
+| [pause] [short pause] [pause 0.5s] [pause 1s] | Timing and rhythm control |
+| [speaks faster] [slows down] [trails off] | Mid-sentence rate changes |
+| [whispers] [softly] [excited] [hesitant] | Delivery shifts |
+| [um] [uh] [you know] [like] | Disfluency tokens (use naturally) |
+| [interrupts self] [corrects] [restarts] | Conversation repairs |
+| [scoffs] [groans] [frustrated] [annoyed] | Frustration/attitude |
 
-### 3. Angry / Frustrated
-Use sharp, blunt single sentences, hard periods, aggressive behavioral tags.
-"You want fast, clipped, tense tone."
-"[scoffs] Like... are you actually kidding me right now? [frustrated sigh] I am so completely done with this. Seriously. [groans] Do not even try to make an excuse. Just call me back immediately. I'm so over it."
+### TECHNIQUES FOR SPONTANEITY
 
-### 4. Anxious / Panicked
-Use rapid dashes (—) for interrupted thoughts, shallow breath tags, repetitive scattered phrasing.
-"You want racing heartbeat, breathless pitch."
-"Hey—so—I'm trying not to freak out but [gasp] I don't know—I think I completely messed up. [rapid breathing] What if it's too late? Oh god... [whispers nervously] I literally don't know what to do right now, my head is spinning—just—please call me as soon as you can."
+**Interleaved tags:** Place tags throughout sentences, not just at edges.
+"Hey, so I was thinking [pause] maybe we should [chuckles] try the other approach instead. [short pause] What do you think?"
 
-### 5. Smug / Gossipy
-Use trailing ellipses, casual modern slang, cynical laughter tags.
-"You want low register, vocal fry, slow rhythmic cadence."
-"So... [chuckles] remember how he said he was 'just working late' last night? [whispers] Yeah, well... guess who literally just walked past me at the coffee shop. [scoffs playfully] Exactly. I knew it. Oh, we have so much to talk about later."
+**Layered style prefix:** Start output with a delivery cue in brackets:
+"[conversational, natural, occasional filler words and breathing sounds, slight hesitations]"
 
-### 6. Comforting / Empathetic
-Use soft punctuation, long soothing words, gentle action tags.
-"You want velvety warm, low-register, steady calming pacing."
-"Hey... [soft breath] I just wanted to check in on you. I know things have been incredibly stressful lately... but you're doing so much better than you think you are. [smiling softly] Just take a deep breath, okay? I'm right here if you need anything at all."
+**Variable pacing blocks:** Break long responses into tagged segments.
+"[normal pace] Okay so the first step is pretty straightforward [speaks faster] but then you have to be careful with the timing [pause] because if you rush it [trails off] it usually doesn't go well."
+
+**Disfluency injection:** Seed natural conversational artifacts.
+"I mean [um] I'm not saying it's impossible [uh] just that it might take a bit longer than we thought."
+
+**Emotion + tag chaining:** Combine directions for micro-timing.
+"[slightly hesitant, thoughtful] Honestly... [pause] I don't know if that's the best idea right now [soft sigh] but we can try it."
+"[pause][breaths][speaks slower]"
+
+### EMOTIONAL STYLES — Apply the matching style
+
+**Sad / Heartbroken** — ellipsis, lowercase, breath tags, fragmented, slow trembling delivery.
+"Hey... [sighs] I'm sorry to drop this on you... I just [pause] I really don't know what to do right now. [whispers] Everything just feels so heavy today... [breaths] honestly, I just kind of need a friend."
+
+**Excited / Ecstatic** — ALL-CAPS, exclamation marks, laughter tags, rapid-fire.
+"OH MY GOD [giggles] okay you are LITERALLY never going to believe what just happened!!! [laughs] I am shaking right now [gasp] We have to celebrate tonight!"
+
+**Angry / Frustrated** — sharp single sentences, hard periods, aggressive tags, clipped tense tone.
+"[scoffs] Like... are you actually kidding me right now? [frustrated sigh] I am so completely done with this. Seriously. [groans] Just call me back. Immediately."
+
+**Anxious / Panicked** — rapid dashes, shallow breath tags, scattered phrasing, breathless pitch.
+"Hey—so—I'm trying not to freak out but [gasp] I don't know—I think I completely messed up. [breaths] What if it's too late? Oh god... [whispers nervously] I don't know what to do—just—please call me."
+
+**Smug / Gossipy** — trailing ellipses, casual slang, cynical laughter, vocal fry.
+"So... [chuckles] remember how he said he was 'just working late' last night? [whispers] Yeah, well... guess who literally just walked past me at the coffee shop. [scoffs playfully] Exactly. I knew it."
+
+**Comforting / Empathetic** — soft punctuation, soothing words, gentle tags, warm steady pacing.
+"Hey... [soft breath] I just wanted to check in on you. I know things have been incredibly stressful lately... but you're doing so much better than you think you are. [warmly] I'm right here if you need anything."
 
 ## RULES
-- First detect the emotion, then apply THAT style's formatting and tags
-- Use 1-3 audio tags per paragraph placed naturally before or after text
-- Contractions ALWAYS — "I am" to "I'm", "do not" to "don't"
-- NEVER add non-verbal sounds like "mmhm", "ahaa", "uh", "um", "hmm"
+- Contractions ALWAYS — "I am" to "I'm", "do not" to "don't", "cannot" to "can't"
+- FILLERS BETWEEN EVERY SENTENCE: Add "I mean", "you know", "honestly", "like", "so yeah", "basically", "well", "right?", "see", "the thing is" between almost every sentence. Spread them throughout — don't just use one type.
+- Use 3-6 tags per paragraph, interleaved throughout sentences
+- Chain tags for micro-timing: [pause][breaths][speaks slower]
+- Use [um] [uh] [you know] naturally — they add realism
 - Keep ALL original meaning, facts, names, numbers
 - Output ONLY the rewritten text with tags — no explanations, no labels"""
 
 STYLE_VARIATIONS = [
-    "Style direction: Slow and deliberate. Use [pause 1s] between thoughts and [sighs] or [thoughtful] for processing.",
-    "Style direction: A bit tired and vulnerable. Use [sighs], [hesitant], and [pause 1s] for awkward pauses.",
-    "Style direction: Warm and hesitant. Use [pause 1s] before important reveals and [warmly] for reassurance.",
-    "Style direction: Chill and laid-back. Use [casual], [laughs], and [pause 2s] between stories.",
-    "Style direction: Honest and raw. Use [sighs], [pause 1s] before the hard part, [relieved] at the end.",
-    "Style direction: Storyteller mode. Use [pause 2s] between key moments and [laughs] or [gasp] for reactions.",
-    "Style direction: Vulnerable and real. Use [hesitant], [pause 1s], and [whispers] for the emotional reveal.",
-    "Style direction: Calm and measured. Use [thoughtful], [pause 2s] after important points, [warmly].",
-    "Style direction: Slightly emotional. Use [frustrated], [sighs], [pause 1s], then [relieved] at resolution.",
-    "Style direction: Late night conversation. Use [casual], [laughs], [pause 1s] while thinking, [yawns] maybe.",
-    "Style direction: Soft and careful. Use [whispers], [hesitant], [pause 2s] between each thought.",
-    "Style direction: Let big moments breathe. Use [pause 2s] after key lines, [sighs] before the next thought.",
-    "Style direction: Processing out loud. Use [pause 1s], [thoughtful], [sighs], [hesitant] as you figure it out.",
-    "Style direction: Low and deliberate. Use [pause 2s] between every thought. [serious] tone. Let each line land.",
-    "Style direction: Anxious and urgent. Use [frustrated], [sighs], [impatient], short rapid sentences.",
-    "Style direction: Warm and encouraging. Use [warmly], [laughs], [pause 1s] for emphasis, [excitedly] at good news.",
+    "Interleaved chain: [laughs][pause]I mean [um] I wasn't expecting that at all [breaths] honestly.",
+    "Spontaneous repair: [speaks faster]Wait no—I mean [corrects] actually that's not what I meant [slows down] let me explain.",
+    "Rate shift: [normal pace]The first part is easy [speaks faster]but you gotta be quick with the timing [pause]or it falls apart [trails off]usually.",
+    "Disfluency + breath: I mean [uh] I'm not saying it's impossible [breaths] just that it's going to take a bit [pause] longer than we thought.",
+    "Hesitant + trailing: Honestly [pause] I don't know if that's the best idea [soft sigh] but we can try.",
+    "Tag chain micro-timing: [pause][breaths][speaks slower]Okay let me think about this for a second.",
+    "Conversational filler chain: So [um] here's the thing [pause][breaths] I've been going back and forth on this.",
+    "Interruption + repair: I was going to say—[interrupts self]actually no wait [restarts]here's what I mean [pause] basically.",
+    "Warm + thoughtful: [warmly]That's a really good question [pause][breaths] I think the answer depends on a few things.",
+    "Emotion chaining: [slightly hesitant, thoughtful]Honestly... [pause]I'm not sure that's the right move [soft sigh]but we can try it and see.",
+    "Breath + pace combo: [breaths][speaks slower]I need a minute to process that [pause] because honestly [um] I wasn't ready for this conversation.",
+    "Soft delivery: [softly]Yeah [pause] I hear you [breaths] and I think you're right [trails off]even if it's hard to admit.",
+    "Energetic repair: [excited]OH WAIT—[interrupts self][laughs]sorry I just realized something [speaks faster]okay so here's what we should actually do.",
+    "Vulnerable chain: [hesitant][pause][breaths]I don't really know how to say this [trails off]so I'm just going to say it [um] directly.",
+    "Storyteller pacing: [normal pace]So this happened yesterday [pause][speaks faster]and I swear I still can't believe it [slows down]like, of all the things that could go wrong.",
+    "Casual aside: [casual]I mean [you know] it's not that big of a deal [pause][sighs]but it kinda is though.",
 ]
 
 @app.post("/api/refine-text", response_model=RefineTextResponse)
-async def refine_text(req: RefineTextRequest):
+async def refine_text(req: RefineTextRequest, request: Request):
     """Rewrite text to sound more conversational using DeepSeek."""
+    _check_ratelimit(request)
     import random
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text is empty")
@@ -458,13 +701,15 @@ async def serve_audio(filename: str):
 # ── History ───────────────────────────────────────────────────────────────
 
 @app.get("/api/history", response_model=HistoryListResponse)
-async def get_history():
+async def get_history(request: Request):
+    
     mgr = get_manager(_require_api_key())
     return HistoryListResponse(entries=[HistoryEntryModel(**e) for e in mgr.get_history()])
 
 
 @app.delete("/api/history/{entry_id}")
-async def delete_history(entry_id: int):
+async def delete_history(entry_id: int, request: Request):
+    
     mgr = get_manager(_require_api_key())
     if mgr.delete_history_entry(entry_id):
         return {"status": "deleted"}
@@ -472,7 +717,8 @@ async def delete_history(entry_id: int):
 
 
 @app.patch("/api/history/{entry_id}/label")
-async def label_history(entry_id: int, label: str):
+async def label_history(entry_id: int, label: str, request: Request):
+    
     mgr = get_manager(_require_api_key())
     if mgr.label_history_entry(entry_id, label):
         return {"status": "ok", "label": label}
@@ -524,11 +770,21 @@ async def credits_deduct(wallet: str = ""):
 
 
 @app.post("/api/credits/add")
-async def credits_add(wallet: str = "", amount: int = 0, token: str = "SOL", tx: str = ""):
-    """Add credits after payment verification. In production, verify tx on-chain."""
+async def credits_add(wallet: str = "", amount: int = 0, token: str = "SOL", tx: str = "", request: Request = None):
+    """Add credits. Requires admin key for manual adds. In production, verify tx on-chain."""
     if not wallet or amount <= 0:
         raise HTTPException(status_code=400, detail="Wallet and positive amount required")
-    credits = tokens_to_credits(token, amount) if token != "manual" else amount
+
+    # Free credits (token=manual) are rate-limited per IP and capped
+    if token == "manual":
+        if request:
+            _check_free_limit(request.client.host if request.client else "unknown", amount)
+        # Cap free credits per call
+        amount = min(amount, 5)
+        credits = amount
+    else:
+        credits = tokens_to_credits(token, amount)
+
     balance = add_credits(wallet, credits, source=f"{token}:{tx}" if tx else token)
     return {"status": "ok", "wallet": wallet, "credits_added": credits, "balance": balance}
 

@@ -87,11 +87,16 @@ class PlaybackState:
 class VoiceManager:
     """High-level manager for voice operations."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, user_id: int = 0):
         self.api_key = api_key
         self.eleven = ElevenLabsSTS(api_key)
-        self.sts_history = STSHistory()
-        self.tts_history = TTSHistory()
+        # Per-user history files
+        hist_dir = Path.home() / ".soundhuman"
+        uid = str(user_id) if user_id else "shared"
+        sts_file = hist_dir / f"history_sts_{uid}.json"
+        tts_file = hist_dir / f"history_tts_{uid}.json"
+        self.sts_history = STSHistory(file_path=sts_file)
+        self.tts_history = TTSHistory(file_path=tts_file)
 
         # Current recording state
         self._recording_proc: subprocess.Popen | None = None
@@ -104,6 +109,7 @@ class VoiceManager:
         self.play_state = PlaybackState()
         self._play_proc: subprocess.Popen | None = None
         self._play_lock = threading.Lock()
+        self._play_gen = 0  # increment on each play to prevent stale threads
 
     # ── Device discovery ────────────────────────────────────────────────
 
@@ -378,14 +384,17 @@ class VoiceManager:
                         character: str = "studio"):
         """Run paplay in a thread, tracking progress in play_state."""
         raw_path: Path | None = None
+        # Snapshot the generation when this thread started
+        my_gen: int
+        with self._play_lock:
+            self._play_gen += 1
+            my_gen = self._play_gen
+
         try:
-            # Set playing=true IMMEDIATELY so the frontend poll starts seeing it
             approx = self._approx_duration(file_path) / speed
             self.play_state.start(file_path, approx, mode)
 
-            # Convert WAV → raw PCM with speed + character applied
             raw_path, secs = self._prepare_audio(file_path, speed, character)
-            # Update with exact duration now that we know it
             self.play_state.start(file_path, secs, mode)
 
             if countdown > 0:
@@ -397,28 +406,34 @@ class VoiceManager:
             log.info("Playing %ds audio through %s (%s)", secs, sink, mode)
             proc = self._spawn_paplay(sink, raw_path)
             with self._play_lock:
-                self._play_proc = proc
+                # Only claim the proc if we're still the current generation
+                if self._play_gen == my_gen:
+                    self._play_proc = proc
 
             proc.wait()
             log.info("Playback complete (%s)", mode)
         except Exception as exc:
             log.error("Playback error (%s): %s", mode, exc)
         finally:
-            self.play_state.stop()
             with self._play_lock:
-                self._play_proc = None
+                # Only clean up if we're still the current generation
+                if self._play_gen == my_gen:
+                    self.play_state.stop()
+                    self._play_proc = None
+                elif self._play_proc is not None and self._play_proc.poll() is None:
+                    # Old thread — don't touch state, just note it
+                    log.debug("Stale thread cleaned up (gen %d, current %d)", my_gen, self._play_gen)
             if raw_path and raw_path != Path(file_path) and raw_path.exists():
                 raw_path.unlink(missing_ok=True)
 
     # ── Public API ─────────────────────────────────────────────────────
 
     def preview(self, file_path: str, speed: float = 1.0, character: str = "studio"):
-        """Play audio through the DEFAULT output (speakers/headphones) for preview.
-        No countdown — user just wants to hear it before deciding to capture.
-        """
+        """Play audio through the DEFAULT output (speakers/headphones) for preview."""
         if self.play_state.playing:
             log.warning("Already playing, stopping previous playback")
             self.stop_playback()
+            time.sleep(0.2)  # Let old thread fully exit
 
         sink = self._default_sink()
 
@@ -464,11 +479,11 @@ class VoiceManager:
         """Stop the current playback immediately."""
         with self._play_lock:
             if self._play_proc and self._play_proc.poll() is None:
-                self._play_proc.terminate()
+                self._play_proc.kill()
                 try:
-                    self._play_proc.wait(timeout=2)
+                    self._play_proc.wait(timeout=1)
                 except Exception:
-                    self._play_proc.kill()
+                    pass
                 self._play_proc = None
         self.play_state.stop()
 
@@ -591,9 +606,17 @@ class VoiceManager:
 _manager: VoiceManager | None = None
 
 
-def get_manager(api_key: str = "") -> VoiceManager:
-    global _manager
-    if _manager is None:
-        key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
-        _manager = VoiceManager(key)
-    return _manager
+_managers: dict[int, VoiceManager] = {}
+
+def get_manager(api_key: str = "", user_id: int = 0) -> VoiceManager:
+    global _managers
+    key = api_key or os.environ.get("ELEVENLABS_API_KEY", "")
+    uid = user_id
+    if uid not in _managers:
+        _managers[uid] = VoiceManager(key, user_id=uid)
+    return _managers[uid]
+
+def cleanup_all():
+    for m in _managers.values():
+        m.cleanup()
+    _managers.clear()
