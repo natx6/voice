@@ -6,8 +6,8 @@ export default function SettingsPage() {
   const [invites, setInvites] = useState<{ code: string; status: string }[]>([])
   const [wallets, setWallets] = useState<Record<string, string>>({})
   const [copiedWallet, setCopiedWallet] = useState('')
-  const [solPrice, setSolPrice] = useState(0.005)
-  const [usdcPrice, setUsdcPrice] = useState(0.50)
+  const [prices, setPrices] = useState<Record<string, number>>({})
+  const [usdPrice, setUsdPrice] = useState(5.0)
 
   useEffect(() => {
     const name = (() => { try { return localStorage.getItem('sh-user') || '' } catch { return '' } })()
@@ -29,8 +29,12 @@ export default function SettingsPage() {
     fetch('/api/pricing')
       .then(r => r.json())
       .then(d => {
-        setSolPrice(d.sol_per_credit || 0.005)
-        setUsdcPrice(d.usdc_per_credit || 0.50)
+        setUsdPrice(d.usd_per_credit || 5.0)
+        setPrices({
+          sol: d.sol_per_credit || 0.035,
+          ltc: d.ltc_per_credit || 0.07,
+          xmr: d.xmr_per_credit || 0.032,
+        })
       })
       .catch(() => {})
   }, [])
@@ -55,15 +59,18 @@ export default function SettingsPage() {
       {/* Buy Credits */}
       <div className="card">
         <div className="card-title">Buy Credits</div>
-        <div style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-            <span>1 credit</span><span style={{ fontWeight: 600 }}>{solPrice} SOL</span>
+        <div style={{ fontSize: 13, marginBottom: 12, lineHeight: 1.8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+            <span style={{ fontWeight: 700 }}>1 generation</span><span style={{ fontWeight: 700 }}>${usdPrice.toFixed(2)} USD</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-            <span>10 credits</span><span style={{ fontWeight: 600 }}>{(solPrice * 10).toFixed(4)} SOL</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12, color: 'var(--text-dim)' }}>
+            <span>SOL</span><span>{prices.sol?.toFixed(6) ?? '...'}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-            <span>100 credits</span><span style={{ fontWeight: 600 }}>{(solPrice * 100).toFixed(4)} SOL</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12, color: 'var(--text-dim)' }}>
+            <span>LTC</span><span>{prices.ltc?.toFixed(6) ?? '...'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: 12, color: 'var(--text-dim)' }}>
+            <span>XMR</span><span>{prices.xmr?.toFixed(6) ?? '...'}</span>
           </div>
         </div>
         <p style={{ fontSize: 13, color: 'var(--text-dim)', marginBottom: 8 }}>

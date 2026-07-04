@@ -23,7 +23,7 @@ export default function AdminPage() {
   const [solWallet, setSolWallet] = useState('')
   const [ltcWallet, setLtcWallet] = useState('')
   const [xmrWallet, setXmrWallet] = useState('')
-  const [costPerCredit, setCostPerCredit] = useState(0.005)
+  const [usdPerCredit, setUsdPerCredit] = useState(5.0)
   const [creditWallet, setCreditWallet] = useState('')
   const [creditAmount, setCreditAmount] = useState(5)
   const [creditMsg, setCreditMsg] = useState('')
@@ -44,7 +44,7 @@ export default function AdminPage() {
       setSolWallet(s.sol_wallet || s.receiving_wallet || '')
       setLtcWallet(s.ltc_wallet || '')
       setXmrWallet(s.xmr_wallet || '')
-      setCostPerCredit(s.cost_per_credit || 0.005)
+      setUsdPerCredit(s.usd_per_credit || 5.0)
     } catch {}
   }, [token])
 
@@ -156,13 +156,19 @@ export default function AdminPage() {
             <input type="text" value={xmrWallet} onChange={e => setXmrWallet(e.target.value)} placeholder="Monero address (optional)" />
           </div>
           <div className="form-group">
-            <label>Cost per Credit (SOL)</label>
-            <input type="number" value={costPerCredit} onChange={e => setCostPerCredit(parseFloat(e.target.value) || 0.005)}
-              step={0.001} min={0.001} max={10} style={{ width: 120 }} />
+            <label>Price per Generation (USD)</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 16, fontWeight: 600 }}>$</span>
+              <input type="number" value={usdPerCredit} onChange={e => setUsdPerCredit(parseFloat(e.target.value) || 5.0)}
+                step={1} min={1} max={1000} style={{ width: 100 }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+              Converts to SOL/LTC/XMR at current market rates.
+            </div>
           </div>
           <button className="btn btn-primary" onClick={async () => {
             try {
-              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&cost_per_credit=${costPerCredit}`, token, { method: 'POST' })
+              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&usd_per_credit=${usdPerCredit}`, token, { method: 'POST' })
             } catch {}
           }}>Save</button>
         </div>

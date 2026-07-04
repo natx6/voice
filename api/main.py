@@ -191,14 +191,35 @@ async def payment_wallet():
 
 @app.get("/api/pricing")
 async def get_pricing():
-    """Public endpoint: returns current pricing per credit."""
+    """Pricing in USD, auto-converted to crypto at current rates."""
     p = Path.home() / ".soundhuman" / "settings.json"
-    cost = 0.005  # default SOL per credit
+    usd_price = 5.0  # default: $5 per credit
+    rates = {"sol": 140, "ltc": 70, "xmr": 155}  # fallback rates
+
     if p.exists():
         import json
         data = json.loads(p.read_text())
-        cost = data.get("cost_per_credit", cost)
-    return {"sol_per_credit": cost, "usdc_per_credit": cost * 100}
+        usd_price = data.get("usd_per_credit", usd_price)
+
+    # Try to get live rates from CoinGecko (cheap, no key needed)
+    try:
+        import httpx
+        r = httpx.get("https://api.coingecko.com/api/v3/simple/price?ids=solana,litecoin,monero&vs_currencies=usd", timeout=5)
+        if r.status_code == 200:
+            d = r.json()
+            if "solana" in d: rates["sol"] = d["solana"]["usd"]
+            if "litecoin" in d: rates["ltc"] = d["litecoin"]["usd"]
+            if "monero" in d: rates["xmr"] = d["monero"]["usd"]
+    except Exception:
+        pass
+
+    return {
+        "usd_per_credit": usd_price,
+        "sol_per_credit": round(usd_price / rates["sol"], 6),
+        "ltc_per_credit": round(usd_price / rates["ltc"], 6),
+        "xmr_per_credit": round(usd_price / rates["xmr"], 6),
+        "rates_updated": "live" if rates else "fallback",
+    }
 
 
 @app.post("/api/recover")
@@ -283,7 +304,7 @@ async def admin_get_settings(request: Request):
 @app.post("/api/admin/settings")
 async def admin_update_settings(request: Request,
                                 receiving_wallet: str = "",
-                                cost_per_credit: float = 0.005,
+                                usd_per_credit: float = 5.0,
                                 sol_wallet: str = "",
                                 ltc_wallet: str = "",
                                 xmr_wallet: str = ""):
@@ -295,7 +316,7 @@ async def admin_update_settings(request: Request,
     if p.exists():
         data = json.loads(p.read_text())
     data["receiving_wallet"] = receiving_wallet
-    data["cost_per_credit"] = cost_per_credit
+    data["usd_per_credit"] = usd_per_credit
     if sol_wallet: data["sol_wallet"] = sol_wallet
     if ltc_wallet: data["ltc_wallet"] = ltc_wallet
     if xmr_wallet: data["xmr_wallet"] = xmr_wallet
