@@ -50,7 +50,9 @@ from voice_converter import VoiceSettings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup — generate bootstrap invite if needed
+    from api.access import ensure_bootstrap_invite
+    ensure_bootstrap_invite()
     yield
     # Shutdown
     from api.voice_manager import cleanup_all
@@ -269,9 +271,16 @@ async def auth_signup(email: str = "", invite: str = ""):
 
 
 @app.post("/api/auth/login")
-async def auth_login(code: str = "", device: str = ""):
-    """Login with access code only."""
-    success, msg, data = access.login(code.strip(), device)
+async def auth_login(request: Request, code: str = ""):
+    """Login with access code only. Accepts query param or JSON body."""
+    # Support both: query param ?code=xxx or JSON body {"code":"xxx"}
+    if not code:
+        try:
+            body = await request.json()
+            code = body.get("code", "")
+        except Exception:
+            pass
+    success, msg, data = access.login(code.strip())
     if not success:
         raise HTTPException(401, msg)
     return {"status": "ok", "user": data}

@@ -182,6 +182,28 @@ def get_user_invites(code: str) -> list[dict]:
     return result
 
 
+def ensure_bootstrap_invite() -> str:
+    """On first run, generate a bootstrap invite code and print it."""
+    with _lock:
+        invites = _load("invites.json")
+        # If there are any unused invites, don't create one
+        for ic, data in invites.items():
+            if not data.get("used_by"):
+                return ""
+        # No available invites — create one
+        code = secrets.token_urlsafe(10)
+        invites[code] = {"created_by": "bootstrap", "used_by": None}
+        _save("invites.json", invites)
+        print(f"\n  ╔═══════════════════════════════════════════╗")
+        print(f"  ║  BOOTSTRAP INVITE CODE                    ║")
+        print(f"  ║                                          ║")
+        print(f"  ║    {code}          ║")
+        print(f"  ║                                          ║")
+        print(f"  ║  Use this to sign up as the first user.  ║")
+        print(f"  ╚═══════════════════════════════════════════╝\n")
+        return code
+
+
 def generate_more_invites(code: str, count: int = 3) -> list[str]:
     """Generate additional invite codes for an existing user."""
     with _lock:
