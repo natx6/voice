@@ -502,8 +502,9 @@ def _deduct_or_raise(wallet: str, amount: int = 1):
 @app.post("/api/tts", response_model=TTSResponse)
 async def text_to_speech(req: TTSRequest, request: Request):
     _check_ratelimit(request)
-    
-    mgr = get_manager(_require_api_key())
+    import hashlib
+    uid = int(hashlib.sha256(req.wallet.encode()).hexdigest()[:8], 16) if req.wallet else 0
+    mgr = get_manager(_require_api_key(), user_id=uid)
     vs = _vs_from_model(req.voice_settings)
     _deduct_or_raise(req.wallet, 1)
     try:
@@ -513,8 +514,6 @@ async def text_to_speech(req: TTSRequest, request: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/api/tts/variations", response_model=TTSVariationsResponse)
 async def tts_variations(req: TTSVariationsRequest, request: Request):
     """Generate multiple audio variations with different deliveries."""

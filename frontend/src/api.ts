@@ -115,7 +115,8 @@ export interface TTSResult {
 }
 
 function getWallet(): string {
-  try { return localStorage.getItem('sh-wallet') || '' } catch { return '' }
+  // Use access code as wallet for per-user history + credit tracking
+  try { return localStorage.getItem('sh-access-code') || localStorage.getItem('sh-wallet') || '' } catch { return '' }
 }
 
 export async function generateTTS(text: string, voiceId: string, settings: VoiceSettings, signal?: AbortSignal): Promise<TTSResult> {

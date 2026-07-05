@@ -65,7 +65,7 @@ def signup(email: str, invite_code: str) -> tuple[bool, str, str]:
             "email": email,
             "email_hash": email_hash,
             "invite_code": invite_code,
-            "credits_granted": 10,
+            "credits_granted": 2,
             "credits_used": 0,
             "device_id": "",
             "active": True,
@@ -80,16 +80,16 @@ def signup(email: str, invite_code: str) -> tuple[bool, str, str]:
             invites[invite_code]["used_by"] = email_hash
             _save("invites.json", invites)
 
-        # Grant credits
+        # Grant 2 free credits
         from api.credits import add_credits as add_c
-        add_c(code, 10, f"signup:{email_hash}")
+        add_c(code, 2, f"signup:{email_hash}")
 
         # Give inviter 1 bonus credit and generate 5 invite codes for new user
         if inviter:
             add_c(inviter, 1, f"invite_bonus:{email_hash}")
-            # Generate 5 invite codes for the new user
+            # Generate 2 invite codes for the new user
             user_codes = []
-            for _ in range(5):
+            for _ in range(2):
                 ic = secrets.token_urlsafe(10)
                 invites[ic] = {"created_by": code, "used_by": None}
                 user_codes.append(ic)
@@ -133,7 +133,7 @@ def login(code: str, device_id: str = "") -> tuple[bool, str, dict]:
         }
 
 
-def admin_generate_codes(count: int, credits: int = 10) -> list[dict]:
+def admin_generate_codes(count: int, credits: int = 2) -> list[dict]:
     """Admin generates access codes pre-loaded with credits."""
     with _lock:
         codes = _load("access_codes.json")
@@ -224,7 +224,7 @@ def generate_more_invites(code: str, count: int = 3) -> list[str]:
         return new_codes
 
 
-def admin_generate_codes(count: int, credits: int = 10) -> list[dict]:
+def admin_generate_codes(count: int, credits: int = 2) -> list[dict]:
     codes = _load("access_codes.json")
     result = []
     for code, data in codes.items():
