@@ -37,7 +37,7 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
   }
 
   const filtered = useMemo(() => {
-    const valid = voices.filter((v): v is VoiceInfo => v != null)
+    const valid = voices.filter((v): v is VoiceInfo => v != null && v.category !== 'premade')
     if (gender === 'all') return valid
     return valid.filter(v => getGender(v) === gender)
   }, [voices, gender])
@@ -95,12 +95,12 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
           </div>
           {selectedVoice?.labels?.accent && (
             <div style={{ fontSize: 11, color: colors.textDim, marginTop: 1 }}>
-              {selectedVoice.labels.accent} · {voices.length} voices
+              {selectedVoice.labels.accent} · {filtered.length} voices
             </div>
           )}
-          {!selectedVoice && voices.length > 0 && (
+          {!selectedVoice && filtered.length > 0 && (
             <div style={{ fontSize: 11, color: colors.textDim, marginTop: 1 }}>
-              {voices.length} voices available
+              {filtered.length} voices available
             </div>
           )}
         </div>
@@ -211,7 +211,7 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
             })}
             {filtered.length === 0 && (
               <div style={{ padding: 24, textAlign: 'center', color: colors.textDim, fontSize: 13 }}>
-                {voices.length === 0 ? 'No voices loaded' : 'No voices match this filter'}
+                {voices.length === 0 ? 'No voices loaded' : 'No custom voices — create one in ElevenLabs'}
               </div>
             )}
           </div>
