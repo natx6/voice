@@ -4,10 +4,13 @@ export default function WalletStatus() {
   const [balance, setBalance] = useState(0)
 
   const loadBalance = useCallback(async () => {
-    const name = (() => { try { return localStorage.getItem('sh-user') } catch { return null } })()
-    if (!name) return
+    const code = (() => { try { return localStorage.getItem('sh-access-code') } catch { return null } })()
+    if (!code) return
     try {
-      const r = await fetch(`/api/user/${encodeURIComponent(name)}`)
+      const r = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
       const data = await r.json()
       setBalance(data.user?.balance ?? 0)
     } catch {}

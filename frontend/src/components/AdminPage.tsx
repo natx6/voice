@@ -17,7 +17,7 @@ export default function AdminPage() {
   })
   const [tokenInput, setTokenInput] = useState('')
   const [tokenError, setTokenError] = useState('')
-  const [tab, setTab] = useState<'users' | 'credits' | 'settings'>('users')
+  const [tab, setTab] = useState<'users' | 'credits' | 'codes' | 'settings'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [recvWallet, setRecvWallet] = useState('')
   const [solWallet, setSolWallet] = useState('')
@@ -27,6 +27,10 @@ export default function AdminPage() {
   const [creditWallet, setCreditWallet] = useState('')
   const [creditAmount, setCreditAmount] = useState(5)
   const [creditMsg, setCreditMsg] = useState('')
+  const [codes, setCodes] = useState<any[]>([])
+  const [genCodeCount, setGenCodeCount] = useState(1)
+  const [genCodeCredits, setGenCodeCredits] = useState(10)
+  const [newCodes, setNewCodes] = useState<any[]>([])
 
   const loadUsers = useCallback(async () => {
     if (!token) return
@@ -49,6 +53,20 @@ export default function AdminPage() {
   }, [token])
 
   useEffect(() => { if (token) loadSettings() }, [token, loadSettings])
+
+  const loadCodes = useCallback(async () => {
+    if (!token) return
+    try { const d = await adminFetch('/admin/codes', token); setCodes(d.codes || []) } catch {}
+  }, [token])
+
+  const handleGenCodes = useCallback(async () => {
+    if (!token) return
+    try {
+      const d = await adminFetch(`/admin/codes?count=${genCodeCount}&credits=${genCodeCredits}`, token, { method: 'POST' })
+      setNewCodes(d.codes || [])
+      loadCodes()
+    } catch {}
+  }, [token, genCodeCount, genCodeCredits, loadCodes])
 
   const handleLogin = useCallback(async () => {
     try {
@@ -98,10 +116,10 @@ export default function AdminPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--surface)', borderRadius: 'var(--radius)', padding: 4 }}>
-          {(['users', 'credits', 'settings'] as const).map(t => (
+          {(['users', 'credits', 'codes', 'settings'] as const).map(t => (
             <button key={t} className={`btn btn-sm${tab === t ? ' btn-primary' : ' btn-ghost'}`}
-              onClick={() => setTab(t)} style={{ flex: 1 }}>
-              {t === 'users' ? 'Users' : t === 'credits' ? 'Credits' : 'Settings'}
+              onClick={() => { setTab(t); if (t === 'codes') loadCodes() }} style={{ flex: 1 }}>
+              {t === 'users' ? 'Users' : t === 'credits' ? 'Credits' : t === 'codes' ? 'Codes' : 'Settings'}
             </button>
           ))}
         </div>
@@ -137,6 +155,49 @@ export default function AdminPage() {
           </div>
           <button className="btn btn-primary" onClick={handleAddCredits}>Add Credits</button>
           {creditMsg && <div style={{ marginTop: 12, padding: '8px 12px', background: creditMsg.startsWith('Error') ? 'var(--red-dim)' : 'var(--green-dim)', borderRadius: 6, fontSize: 13 }}>{creditMsg}</div>}
+        </div>
+      )}
+
+      {tab === 'codes' && (
+        <div>
+          <div className="card" style={{ padding: 16 }}>
+            <div className="card-title">Generate Access Codes</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+              <input type="number" value={genCodeCount} onChange={e => setGenCodeCount(parseInt(e.target.value) || 1)}
+                min={1} max={50} style={{ width: 60 }} placeholder="Count" />
+              <input type="number" value={genCodeCredits} onChange={e => setGenCodeCredits(parseInt(e.target.value) || 10)}
+                min={1} max={1000} style={{ width: 80 }} placeholder="Credits" />
+              <button className="btn btn-primary btn-sm" onClick={handleGenCodes}>Generate</button>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Each code gets {genCodeCredits} credits. Copy and send to users.</div>
+          </div>
+          {newCodes.length > 0 && (
+            <div className="card" style={{ padding: 16, borderColor: 'var(--green)' }}>
+              <div className="card-title">New Codes</div>
+              {newCodes.map((c, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, padding: '6px 8px', background: 'var(--surface-2)', borderRadius: 4 }}>
+                  <code style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}>{c.code}</code>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{c.credits} credits</span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(c.code)}>Copy</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginTop: 16, marginBottom: 8, textTransform: 'uppercase' }}>
+            All Codes ({codes.length})
+          </div>
+          {codes.map(c => (
+            <div key={c.code} className="history-item" style={{ opacity: c.active ? 1 : 0.4 }}>
+              <div className="info">
+                <div className="name" style={{ fontFamily: 'monospace', fontSize: 12 }}>{c.code}</div>
+                <div className="meta">{c.email || 'unused'} · {c.balance} credits · {c.created?.slice(0, 10)}{c.device ? ' · device registered' : ''}</div>
+              </div>
+              <div className="actions">
+                {c.active && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700 }}>Active</span>}
+                {!c.active && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Revoked</span>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

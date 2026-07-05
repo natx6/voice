@@ -5,7 +5,7 @@ import TTSTab from './components/TTSTab'
 import HistoryTab from './components/HistoryTab'
 import SettingsPage from './components/SettingsPage'
 import AdminPage from './components/AdminPage'
-import OnboardPage from './components/OnboardPage'
+import AccessAuth from './components/AccessAuth'
 import WalletStatus from './components/WalletStatus'
 
 const DEFAULT_SETTINGS: VoiceSettings = {
@@ -22,8 +22,8 @@ export default function App() {
   const [settings] = useState<VoiceSettings>(DEFAULT_SETTINGS)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [toast, setToast] = useState<string | null>(null)
-  const [username, setUsername] = useState<string>(() => {
-    try { return localStorage.getItem('sh-user') || '' } catch { return '' }
+  const [accessCode, setAccessCode] = useState<string>(() => {
+    try { return localStorage.getItem('sh-access-code') || '' } catch { return '' }
   })
 
   const showToast = useCallback((msg: string) => {
@@ -66,8 +66,8 @@ export default function App() {
   useEffect(() => { if (tab === 'history') api.getHistory().then(setHistory).catch(() => {}) }, [tab])
   const refreshHistory = useCallback(async () => { try { setHistory(await api.getHistory()) } catch {} }, [])
 
-  if (!username) {
-    return <OnboardPage onComplete={(name) => setUsername(name)} />
+  if (!accessCode) {
+    return <AccessAuth onAuth={(code) => setAccessCode(code)} />
   }
 
   return (
@@ -77,7 +77,7 @@ export default function App() {
           <div className="logo">sh</div>
           <div>
             <h1>soundhuman</h1>
-            <div className="subtitle">@{username}</div>
+            <div className="subtitle">code: {accessCode.slice(0, 8)}...</div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

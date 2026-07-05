@@ -41,7 +41,7 @@ from api.models import (
 )
 from api.voice_manager import get_manager, VoiceManager
 from api.credits import get_balance, add_credits, deduct_credit, tokens_to_credits
-from api import users
+from api import users, access
 import re
 from voice_converter import VoiceSettings
 
@@ -234,6 +234,71 @@ async def recover(phrase: str = ""):
     if not user:
         raise HTTPException(404, "User not found")
     return {"status": "ok", "user": user}
+
+
+# ── Access Code Auth ──────────────────────────────────────────────────
+
+@app.get("/api/invites")
+async def get_invites(code: str = ""):
+    """Get invite codes for an access code."""
+    if not code:
+        raise HTTPException(400, "Access code required")
+    invites = access.get_user_invites(code)
+    return {"invites": invites}
+
+
+@app.post("/api/invites/generate")
+async def generate_invites(code: str = ""):
+    """Generate 3 more invite codes for an access code."""
+    if not code:
+        raise HTTPException(400, "Access code required")
+    codes = access.generate_more_invites(code)
+    if not codes:
+        raise HTTPException(400, "Invalid access code")
+    invites = access.get_user_invites(code)
+    return {"invites": invites, "new": codes}
+
+
+@app.post("/api/auth/signup")
+async def auth_signup(email: str = "", invite: str = ""):
+    """Sign up with email + invite code. Returns access code."""
+    success, msg, code = access.signup(email, invite)
+    if not success:
+        raise HTTPException(400, msg)
+    return {"status": "ok", "access_code": code, "message": "Save this code — you'll need it to log in."}
+
+
+@app.post("/api/auth/login")
+async def auth_login(code: str = "", device: str = ""):
+    """Login with access code only."""
+    success, msg, data = access.login(code.strip(), device)
+    if not success:
+        raise HTTPException(401, msg)
+    return {"status": "ok", "user": data}
+
+
+@app.post("/api/admin/codes")
+async def admin_generate_codes(request: Request, count: int = 1, credits: int = 10):
+    _require_admin(request)
+    count = max(1, min(count, 50))
+    codes = access.admin_generate_codes(count, credits)
+    return {"status": "ok", "codes": codes}
+
+
+@app.get("/api/admin/codes")
+async def admin_list_codes(request: Request):
+    _require_admin(request)
+    return {"codes": access.admin_list_codes()}
+
+
+@app.post("/api/admin/codes/revoke")
+async def admin_revoke_code(request: Request, code: str = ""):
+    _require_admin(request)
+    if not code:
+        raise HTTPException(400, "Code required")
+    if access.admin_revoke(code):
+        return {"status": "revoked"}
+    raise HTTPException(404, "Code not found")
 
 
 @app.get("/api/onboard")
