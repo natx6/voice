@@ -878,25 +878,28 @@ async def serve_audio(filename: str):
 # ── History ───────────────────────────────────────────────────────────────
 
 @app.get("/api/history", response_model=HistoryListResponse)
-async def get_history(request: Request):
-    
-    mgr = get_manager(_require_api_key())
+async def get_history(request: Request, code: str = ""):
+    import hashlib
+    uid = int(hashlib.sha256(code.encode()).hexdigest()[:8], 16) if code else 0
+    mgr = get_manager(_require_api_key(), user_id=uid)
     return HistoryListResponse(entries=[HistoryEntryModel(**e) for e in mgr.get_history()])
 
 
 @app.delete("/api/history/{entry_id}")
-async def delete_history(entry_id: int, request: Request):
-    
-    mgr = get_manager(_require_api_key())
+async def delete_history(entry_id: int, request: Request, code: str = ""):
+    import hashlib
+    uid = int(hashlib.sha256(code.encode()).hexdigest()[:8], 16) if code else 0
+    mgr = get_manager(_require_api_key(), user_id=uid)
     if mgr.delete_history_entry(entry_id):
         return {"status": "deleted"}
     raise HTTPException(status_code=404, detail=f"Entry #{entry_id} not found")
 
 
 @app.patch("/api/history/{entry_id}/label")
-async def label_history(entry_id: int, label: str, request: Request):
-    
-    mgr = get_manager(_require_api_key())
+async def label_history(entry_id: int, label: str, request: Request, code: str = ""):
+    import hashlib
+    uid = int(hashlib.sha256(code.encode()).hexdigest()[:8], 16) if code else 0
+    mgr = get_manager(_require_api_key(), user_id=uid)
     if mgr.label_history_entry(entry_id, label):
         return {"status": "ok", "label": label}
     raise HTTPException(status_code=404, detail=f"Entry #{entry_id} not found")

@@ -17,39 +17,14 @@ export default function ThemeToggle() {
     const btn = btnRef.current
     if (!btn) { setDark(!dark); return }
 
-    const rect = btn.getBoundingClientRect()
-    const cx = rect.left + rect.width / 2
-    const cy = rect.top + rect.height / 2
-    const maxRadius = Math.hypot(
-      Math.max(cx, window.innerWidth - cx),
-      Math.max(cy, window.innerHeight - cy)
-    )
+    // Subtle zoom + pop on the button itself
+    btn.style.transform = 'scale(1.25)'
+    btn.style.transition = 'transform 0.2s ease'
 
-    // Create the circle overlay
-    const overlay = document.createElement('div')
-    overlay.style.cssText = `
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      z-index: 9999; pointer-events: none;
-      clip-path: circle(0px at ${cx}px ${cy}px);
-      transition: clip-path 0.4s ease;
-      background: ${dark ? '#f5f5f7' : '#1c1c1e'};
-    `
-    document.body.appendChild(overlay)
-
-    // Force reflow then expand
-    requestAnimationFrame(() => {
-      overlay.style.clipPath = `circle(${maxRadius}px at ${cx}px ${cy}px)`
-    })
-
-    // Switch theme mid-animation
     setTimeout(() => {
       setDark(!dark)
-    }, 200)
-
-    // Clean up overlay after animation
-    setTimeout(() => {
-      overlay.remove()
-    }, 500)
+      btn.style.transform = 'scale(1)'
+    }, 120)
   }
 
   return (
@@ -61,7 +36,6 @@ export default function ThemeToggle() {
         background: 'var(--surface-2)', cursor: 'pointer',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 13, color: 'var(--text-dim)',
-        transition: 'transform 0.15s',
       }}
       title={dark ? 'Light mode' : 'Dark mode'}
     >

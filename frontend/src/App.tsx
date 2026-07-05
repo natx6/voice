@@ -81,7 +81,13 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem('sh-tts-raw', ttsRawText) } catch {} }, [ttsRawText])
   useEffect(() => { if (ttsRefinedText !== null) try { localStorage.setItem('sh-tts-refined', ttsRefinedText) } catch {} }, [ttsRefinedText])
 
-  useEffect(() => { if (tab === 'history') api.getHistory().then(setHistory).catch(() => {}) }, [tab])
+  useEffect(() => {
+    if (tab === 'history') {
+      const code = accessCode
+      api.fetchJson<{ entries: any[] }>(`/history?code=${encodeURIComponent(code)}`)
+        .then(d => setHistory(d.entries)).catch(() => {})
+    }
+  }, [tab, accessCode])
   const refreshHistory = useCallback(async () => { try { setHistory(await api.getHistory()) } catch {} }, [])
 
   if (!accessCode) {
