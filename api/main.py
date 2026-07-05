@@ -420,17 +420,35 @@ async def get_user_info(username: str):
 @app.get("/api/admin/users")
 async def admin_list_users(request: Request):
     _require_admin(request)
-    return {"users": users.get_all_users()}
+    from api.access import _load
+    codes = _load("access_codes.json")
+    from api.credits import get_balance
+    result = []
+    for code, data in codes.items():
+        result.append({
+            "code": code[:12] + "...",
+            "email": data.get("email", "unused"),
+            "balance": get_balance(code),
+            "active": data.get("active", True),
+            "created": data.get("created", "")[:10],
+        })
+    return {"users": sorted(result, key=lambda x: x["created"], reverse=True)}
 
 
 @app.post("/api/admin/credits")
-async def admin_add_credits(request: Request, username: str = "", amount: int = 0):
+async def admin_add_credits(request: Request, code: str = "", amount: int = 0):
     _require_admin(request)
-    if not username or amount <= 0:
-        raise HTTPException(400, "Username and positive amount required")
-    add_credits(username, amount, f"admin:{username}")
-    user = users.get_user(username)
-    return {"status": "ok", "user": user}
+    if not code or amount <= 0:
+        raise HTTPException(400, "Access code and positive amount required")
+    add_credits(code, amount, f"admin:{code}")
+    from api.access import _load
+    codes = _load("access_codes.json")
+    entry = codes.get(code[:12] if len(code) > 12 else code)
+    # Try full match first, then prefix
+    for c, d in codes.items():
+        if c.startswith(code.replace("...", "")) or c == code:
+            return {"status": "ok", "user": {"code": c[:12]+"...", "email": d.get("email",""), "balance": get_balance(c), "active": d.get("active",True)}}
+    return {"status": "ok"}
 
 
 @app.post("/api/admin/invite")

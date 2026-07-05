@@ -154,10 +154,10 @@ export default function AdminPage({ onAuth }: Props) {
             Users ({users.length})
           </div>
           {users.map(u => (
-            <div key={u.username} className="history-item">
+            <div key={u.code} className="history-item">
               <div className="info">
-                <div className="name">@{u.username}</div>
-                <div className="meta">{u.balance} credits · {u.created?.slice(0, 10)}</div>
+                <div className="name">{u.email} <span style={{fontSize:11,color:'var(--text-dim)'}}>{u.code}</span></div>
+                <div className="meta">{u.balance} credits · {u.created}{u.active ? '' : ' · inactive'}</div>
               </div>
             </div>
           ))}
@@ -169,7 +169,7 @@ export default function AdminPage({ onAuth }: Props) {
           <div className="card-title">Add Credits</div>
           <div className="form-group">
             <label>Username</label>
-            <input type="text" value={creditWallet} onChange={e => setCreditWallet(e.target.value)} placeholder="Username (e.g. happy-tiger-42)" />
+            <input type="text" value={creditWallet} onChange={e => setCreditWallet(e.target.value)} placeholder="Access code (paste full code)" />
           </div>
           <div className="form-group">
             <label>Amount</label>
