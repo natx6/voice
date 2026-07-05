@@ -12,7 +12,9 @@ type Gender = 'all' | 'male' | 'female'
 export default function VoicePicker({ voices, selected, onChange }: VoicePickerProps) {
   const [gender, setGender] = useState<Gender>('all')
   const [open, setOpen] = useState(false)
+  const [playing, setPlaying] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Close on click outside
   useEffect(() => {
@@ -206,26 +208,29 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
                       onMouseDown={e => e.stopPropagation()}
                       onClick={async e => {
                         e.stopPropagation()
+                        if (playing === v.voice_id) return // already playing
+                        // Stop previous
+                        if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+                        setPlaying(v.voice_id)
                         try {
                           const r = await fetch(`/api/voice/preview/${v.voice_id}`)
                           const blob = await r.blob()
                           const url = URL.createObjectURL(blob)
                           const audio = new Audio(url)
-                          audio.onended = () => URL.revokeObjectURL(url)
-                          audio.play()
-                          // brief visual feedback on the button
-                          e.currentTarget.style.color = colors.accent
-                          setTimeout(() => { e.currentTarget.style.color = colors.textDim }, 600)
-                        } catch {}
+                          audioRef.current = audio
+                          audio.oncanplaythrough = () => audio.play()
+                          audio.onended = () => { URL.revokeObjectURL(url); setPlaying(null); audioRef.current = null }
+                          audio.onerror = () => { setPlaying(null); audioRef.current = null }
+                        } catch { setPlaying(null) }
                       }}
                       style={{
                         width: 24, height: 24, borderRadius: 4, border: 'none',
                         background: 'transparent', cursor: 'pointer',
-                        fontSize: 11, color: colors.textDim, display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                        transition: 'color 0.3s',
+                        fontSize: 11,
+                        color: playing === v.voice_id ? colors.accent : colors.textDim,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
-                    >▶</button>
+                    >{playing === v.voice_id ? '◉' : '▶'}</button>
                   </div>
                   {/* Checkmark */}
                   {isSel && (
