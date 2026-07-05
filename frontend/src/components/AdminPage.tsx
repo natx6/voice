@@ -102,8 +102,8 @@ export default function AdminPage({ onAuth }: Props) {
     if (!creditWallet || creditAmount <= 0 || !token) return
     setCreditMsg('')
     try {
-      const d = await adminFetch(`/admin/credits?username=${encodeURIComponent(creditWallet)}&amount=${creditAmount}`, token, { method: 'POST' })
-      setCreditMsg(`Added ${creditAmount} credits — Balance: ${d.user?.balance}`)
+      const d = await adminFetch(`/admin/credits?email=${encodeURIComponent(creditWallet)}&amount=${creditAmount}`, token, { method: 'POST' })
+      setCreditMsg(`Added ${creditAmount} credits to ${creditWallet} — Balance: ${d.user?.balance}`)
       setCreditWallet('')
       loadUsers()
     } catch (e: any) { setCreditMsg(`Error: ${e.message}`) }
@@ -154,9 +154,9 @@ export default function AdminPage({ onAuth }: Props) {
             Users ({users.length})
           </div>
           {users.map(u => (
-            <div key={u.code} className="history-item">
+            <div key={u.code} className="history-item" style={{cursor:'pointer'}} onClick={() => { setCreditWallet(u.email); setTab('credits') }}>
               <div className="info">
-                <div className="name">{u.email} <span style={{fontSize:11,color:'var(--text-dim)'}}>{u.code}</span></div>
+                <div className="name">{u.email}</div>
                 <div className="meta">{u.balance} credits · {u.created}{u.active ? '' : ' · inactive'}</div>
               </div>
             </div>
@@ -166,10 +166,10 @@ export default function AdminPage({ onAuth }: Props) {
 
       {tab === 'credits' && (
         <div className="card">
-          <div className="card-title">Add Credits</div>
+          <div className="card-title">Add Credits by Email</div>
           <div className="form-group">
-            <label>Username</label>
-            <input type="text" value={creditWallet} onChange={e => setCreditWallet(e.target.value)} placeholder="Access code (paste full code)" />
+            <label>Email</label>
+            <input type="text" value={creditWallet} onChange={e => setCreditWallet(e.target.value)} placeholder="user@email.com" />
           </div>
           <div className="form-group">
             <label>Amount</label>
