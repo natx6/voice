@@ -53,7 +53,6 @@ export default function SettingsPage() {
             <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(inv.code)}>Copy</button>
           </div>
         ))}
-        <button className="btn btn-ghost btn-sm" onClick={loadInvites}>Refresh invites</button>
       </div>
 
       <div className="card">
