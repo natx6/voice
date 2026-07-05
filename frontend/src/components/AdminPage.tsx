@@ -29,6 +29,8 @@ export default function AdminPage({ onAuth }: Props) {
   const [xmrWallet, setXmrWallet] = useState('')
   const [usdPerCredit, setUsdPerCredit] = useState(5.0)
   const [purchasesBlocked, setPurchasesBlocked] = useState(false)
+  const [tgBotToken, setTgBotToken] = useState('')
+  const [tgChatId, setTgChatId] = useState('')
   const [creditWallet, setCreditWallet] = useState('')
   const [creditAmount, setCreditAmount] = useState(5)
   const [creditMsg, setCreditMsg] = useState('')
@@ -56,6 +58,8 @@ export default function AdminPage({ onAuth }: Props) {
       setXmrWallet(s.xmr_wallet || '')
       setUsdPerCredit(s.usd_per_credit || 5.0)
       setPurchasesBlocked(s.purchases_blocked || false)
+      setTgBotToken(s.tg_bot_token || '')
+      setTgChatId(s.tg_chat_id || '')
     } catch {}
   }, [token])
 
@@ -269,10 +273,25 @@ export default function AdminPage({ onAuth }: Props) {
               <input type="number" value={usdPerCredit} onChange={e => setUsdPerCredit(parseFloat(e.target.value) || 5.0)}
                 step={1} min={1} max={1000} style={{ width: 100 }} />
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
-              Converts to SOL/LTC/XMR at current market rates.
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border)', margin: '12px 0', paddingTop: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 8, textTransform: 'uppercase' }}>
+              Telegram Notifications
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>
+              Get a Telegram message when a user reports a payment. Create a bot via @BotFather.
+            </p>
+            <div className="form-group">
+              <label>Bot Token</label>
+              <input type="text" value={tgBotToken} onChange={e => setTgBotToken(e.target.value)} placeholder="123456:ABCdef..." />
+            </div>
+            <div className="form-group">
+              <label>Chat ID</label>
+              <input type="text" value={tgChatId} onChange={e => setTgChatId(e.target.value)} placeholder="-1001234567890" />
             </div>
           </div>
+
           <div className="form-group">
             <label>Block Purchases</label>
             <button className={`btn btn-sm ${purchasesBlocked ? 'btn-danger' : 'btn-ghost'}`}
@@ -282,7 +301,7 @@ export default function AdminPage({ onAuth }: Props) {
           </div>
           <button className="btn btn-primary" onClick={async () => {
             try {
-              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&usd_per_credit=${usdPerCredit}&purchases_blocked=${purchasesBlocked}`, token, { method: 'POST' })
+              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&usd_per_credit=${usdPerCredit}&purchases_blocked=${purchasesBlocked}&tg_bot_token=${encodeURIComponent(tgBotToken)}&tg_chat_id=${encodeURIComponent(tgChatId)}`, token, { method: 'POST' })
             } catch {}
           }}>Save</button>
         </div>

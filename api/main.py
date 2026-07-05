@@ -177,6 +177,29 @@ async def admin_login(request: Request):
         raise e
 
 
+# ── Telegram Notification ────────────────────────────────────────────
+
+async def _send_tg(msg: str):
+    """Send a Telegram message if bot token and chat ID are configured."""
+    settings_p = Path.home() / ".soundhuman" / "settings.json"
+    if not settings_p.exists():
+        return
+    import json as _j
+    s = _j.loads(settings_p.read_text())
+    token = s.get("tg_bot_token", "")
+    chat = s.get("tg_chat_id", "")
+    if not token or not chat:
+        return
+    import httpx as _h
+    try:
+        await _h.AsyncClient(timeout=5).post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat, "text": msg, "parse_mode": "HTML"},
+        )
+    except Exception:
+        pass
+
+
 @app.post("/api/payment/request")
 async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = ""):
     """User reports they sent payment. Creates a pending request for admin."""
@@ -187,6 +210,7 @@ async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = 
     reqs = []
     if p.exists():
         reqs = json.loads(p.read_text())
+    idx = len(reqs)
     reqs.append({
         "code": code,
         "amount_sol": amount_sol,
@@ -195,6 +219,28 @@ async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = 
         "created": str(__import__("datetime").datetime.now())[:19],
     })
     p.write_text(json.dumps(reqs, indent=2))
+
+    # Get admin token for approve link
+    admin_t = ""
+    atp = Path.home() / ".soundhuman" / "admin_token"
+    if atp.exists():
+        admin_t = atp.read_text().strip()[:16]
+    # Get user info
+    from api.access import _load as _al
+    acodes = _al("access_codes.json")
+    user_email = acodes.get(code, {}).get("email", code[:8] + "...")
+    # Send Telegram notification
+    base = os.environ.get("PUBLIC_URL", "http://localhost:5173")
+    links = f"{base}/admin?token={admin_t}"
+    await _send_tg(
+        f"<b>💳 Payment Request #{idx}</b>\n"
+        f"User: {user_email}\n"
+        f"Amount: {amount_sol} SOL\n"
+        f"Code: {code[:12]}...\n"
+        f"Tx: {tx_hash[:16] if tx_hash else 'manual'}\n"
+        f"<a href='{links}'>Open Admin → Approve</a>"
+    )
+
     return {"status": "pending", "message": "Payment reported. Admin will credit you after verification."}
 
 
@@ -474,17 +520,30 @@ async def admin_list_users(request: Request):
 
 
 @app.post("/api/admin/credits")
-async def admin_add_credits(request: Request, code: str = "", amount: int = 0):
+async def admin_add_credits(request: Request, code: str = "", amount: int = 0, email: str = ""):
     _require_admin(request)
-    if not code or amount <= 0:
-        raise HTTPException(400, "Access code and positive amount required")
-    add_credits(code, amount, f"admin:{code}")
+    if amount <= 0:
+        raise HTTPException(400, "Positive amount required")
+
+    # Resolve target: by email or by access code
+    target = code
     from api.access import _load
+    if email and not code:
+        codes = _load("access_codes.json")
+        for c, d in codes.items():
+            if d.get("email", "").lower() == email.lower():
+                target = c
+                break
+        if target == email:
+            raise HTTPException(404, f"No user with email {email}")
+
+    if not target:
+        raise HTTPException(400, "Email or access code required")
+
+    add_credits(target, amount, f"admin:{target}")
     codes = _load("access_codes.json")
-    entry = codes.get(code[:12] if len(code) > 12 else code)
-    # Try full match first, then prefix
     for c, d in codes.items():
-        if c.startswith(code.replace("...", "")) or c == code:
+        if c == target:
             return {"status": "ok", "user": {"code": c[:12]+"...", "email": d.get("email",""), "balance": get_balance(c), "active": d.get("active",True)}}
     return {"status": "ok"}
 
@@ -519,7 +578,9 @@ async def admin_update_settings(request: Request,
                                 sol_wallet: str = "",
                                 ltc_wallet: str = "",
                                 xmr_wallet: str = "",
-                                purchases_blocked: bool = False):
+                                purchases_blocked: bool = False,
+                                tg_bot_token: str = "",
+                                tg_chat_id: str = ""):
     _require_admin(request)
     import json
     p = Path.home() / ".soundhuman" / "settings.json"
@@ -533,6 +594,8 @@ async def admin_update_settings(request: Request,
     if sol_wallet: data["sol_wallet"] = sol_wallet
     if ltc_wallet: data["ltc_wallet"] = ltc_wallet
     if xmr_wallet: data["xmr_wallet"] = xmr_wallet
+    if tg_bot_token: data["tg_bot_token"] = tg_bot_token
+    if tg_chat_id: data["tg_chat_id"] = tg_chat_id
     p.write_text(json.dumps(data, indent=2))
     return {"status": "ok", "settings": data}
 
