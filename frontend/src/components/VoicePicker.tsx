@@ -200,6 +200,25 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
                     )}
                   </div>
 
+                  {/* Play preview */}
+                  <div style={{ flexShrink: 0 }}>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={async e => {
+                        e.stopPropagation()
+                        try {
+                          const audio = new Audio(`/api/voice/preview/${v.voice_id}`)
+                          audio.play()
+                        } catch {}
+                      }}
+                      style={{
+                        width: 24, height: 24, borderRadius: 4, border: 'none',
+                        background: 'transparent', cursor: 'pointer',
+                        fontSize: 11, color: colors.textDim, display: 'flex',
+                        alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >▶</button>
+                  </div>
                   {/* Checkmark */}
                   {isSel && (
                     <svg width="16" height="16" viewBox="0 0 16 16" style={{ flexShrink: 0 }}>

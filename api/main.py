@@ -248,6 +248,24 @@ async def payment_wallet():
     return result
 
 
+@app.get("/api/voice/preview/{voice_id}")
+async def preview_voice(voice_id: str):
+    """Generate a short voice sample for preview (no credit deducted)."""
+    import httpx
+    api_key = _require_api_key()
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
+            params={"output_format": "mp3_44100_128"},
+            headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+            json={"text": "Hello, this is my voice.", "model_id": "eleven_v3"},
+        )
+        if resp.status_code != 200:
+            raise HTTPException(502, "Voice preview failed")
+            from fastapi.responses import Response
+        return Response(content=resp.content, media_type="audio/mpeg")
+
+
 @app.get("/api/pricing")
 async def get_pricing():
     """Pricing in USD, auto-converted to crypto at current rates."""
