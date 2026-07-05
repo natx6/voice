@@ -224,7 +224,27 @@ async def admin_approve_payment(request: Request, idx: int = 0):
     if req["status"] == "approved":
         raise HTTPException(400, "Already approved")
     # Calculate credits from SOL amount
-    credits = max(1, int(req["amount_sol"] / 0.035))
+    # Get current SOL/USD rate from CoinGecko
+    import httpx
+    sol_usd = 140.0
+    try:
+        r = httpx.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", timeout=3)
+        if r.status_code == 200:
+            sol_usd = r.json().get("solana", {}).get("usd", 140.0)
+    except Exception:
+        pass
+    # Convert SOL → USD → credits at admin-set price
+    usd_value = req["amount_sol"] * sol_usd
+    # Get admin price per credit
+    settings_path = Path.home() / ".soundhuman" / "settings.json"
+    usd_per_credit = 5.0
+    if settings_path.exists():
+        import json as _json
+        try:
+            usd_per_credit = _json.loads(settings_path.read_text()).get("usd_per_credit", 5.0)
+        except Exception:
+            pass
+    credits = max(1, int(usd_value / usd_per_credit))
     from api.credits import add_credits
     add_credits(req["code"], credits, f"payment:{req['tx_hash']}")
     reqs[idx]["status"] = "approved"
