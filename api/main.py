@@ -149,7 +149,7 @@ def _get_admin_token() -> str:
     print(f"\n  ╔══════════════════════════════════════════════════╗")
     print(f"  ║  ADMIN PANEL                                     ║")
     print(f"  ║                                                  ║")
-    print(f"  ║  http://localhost:8765/api/admin/login?token={token}  ║")
+    print(f"  ║  http://localhost:5173/?token={token}  ║")
     print(f"  ║                                                  ║")
     print(f"  ╚══════════════════════════════════════════════════╝\n")
     return token

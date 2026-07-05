@@ -15,10 +15,18 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 }
 
 export default function App() {
+  // Auto-detect admin token from URL: /?token=xxx / /#token=xxx / direct
+  const urlToken = new URLSearchParams(window.location.search).get('token')
+  if (urlToken) {
+    localStorage.setItem('sh-admin-token', urlToken)
+    // Clean URL by removing the token param
+    window.history.replaceState({}, '', window.location.pathname)
+  }
   const [hasAdmin, setHasAdmin] = useState(() => {
     try { return !!localStorage.getItem('sh-admin-token') } catch { return false }
   })
-  const [tab, setTab] = useState<string>('create')
+  // If token was in URL, auto-show admin
+  const [tab, setTab] = useState<string>(urlToken ? 'admin' : 'create')
   const [status, setStatus] = useState<string>('connecting')
   const [voices, setVoices] = useState<VoiceInfo[]>([])
   const [selectedVoice, setSelectedVoice] = useState<string>('')

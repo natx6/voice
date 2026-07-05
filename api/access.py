@@ -195,11 +195,11 @@ def ensure_bootstrap_invite() -> str:
         invites[code] = {"created_by": "bootstrap", "used_by": None}
         _save("invites.json", invites)
         print(f"\n  ╔═══════════════════════════════════════════╗")
-        print(f"  ║  BOOTSTRAP INVITE CODE                    ║")
+        print(f"  ║  INVITE CODE (for first signup)            ║")
         print(f"  ║                                          ║")
         print(f"  ║    {code}          ║")
         print(f"  ║                                          ║")
-        print(f"  ║  Use this to sign up as the first user.  ║")
+        print(f"  ║  Open the app → Sign up → enter this     ║")
         print(f"  ╚═══════════════════════════════════════════╝\n")
         return code
 
