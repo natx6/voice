@@ -251,6 +251,7 @@ async def payment_wallet():
 @app.get("/api/voice/preview/{voice_id}")
 async def preview_voice(voice_id: str):
     """Generate a short voice sample for preview (no credit deducted)."""
+    from fastapi.responses import Response
     import httpx
     api_key = _require_api_key()
     async with httpx.AsyncClient(timeout=10) as client:
@@ -262,7 +263,6 @@ async def preview_voice(voice_id: str):
         )
         if resp.status_code != 200:
             raise HTTPException(502, "Voice preview failed")
-            from fastapi.responses import Response
         return Response(content=resp.content, media_type="audio/mpeg")
 
 

@@ -207,8 +207,15 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
                       onClick={async e => {
                         e.stopPropagation()
                         try {
-                          const audio = new Audio(`/api/voice/preview/${v.voice_id}`)
+                          const r = await fetch(`/api/voice/preview/${v.voice_id}`)
+                          const blob = await r.blob()
+                          const url = URL.createObjectURL(blob)
+                          const audio = new Audio(url)
+                          audio.onended = () => URL.revokeObjectURL(url)
                           audio.play()
+                          // brief visual feedback on the button
+                          e.currentTarget.style.color = colors.accent
+                          setTimeout(() => { e.currentTarget.style.color = colors.textDim }, 600)
                         } catch {}
                       }}
                       style={{
@@ -216,6 +223,7 @@ export default function VoicePicker({ voices, selected, onChange }: VoicePickerP
                         background: 'transparent', cursor: 'pointer',
                         fontSize: 11, color: colors.textDim, display: 'flex',
                         alignItems: 'center', justifyContent: 'center',
+                        transition: 'color 0.3s',
                       }}
                     >▶</button>
                   </div>
