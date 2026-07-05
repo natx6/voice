@@ -129,6 +129,24 @@ export default function TTSTab({
   const handleGenerateVariations = useCallback(async () => {
     const text = refinedText ?? rawText
     if (!text.trim() || !voiceId) return
+
+    // Check if user has enough credits for variations
+    if (genVariations) {
+      try {
+        const code = localStorage.getItem('sh-access-code') || ''
+        const r = await fetch(`/api/auth/login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        })
+        const d = await r.json()
+        const bal = d.user?.balance ?? 0
+        if (bal < 3) {
+          showToast(`You need 3 credits for variations. Turn it off or buy more (balance: ${bal}).`)
+          return
+        }
+      } catch {}
+    }
+
     setGenerating(true)
     setGenPct(0)
     setVariations([])

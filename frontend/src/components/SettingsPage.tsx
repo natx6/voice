@@ -12,6 +12,8 @@ export default function SettingsPage() {
   const [buyAmount, setBuyAmount] = useState('')
   const [showAddress, setShowAddress] = useState(false)
   const [purchasesBlocked, setPurchasesBlocked] = useState(false)
+  const [txHash, setTxHash] = useState('')
+  const [paymentSent, setPaymentSent] = useState(false)
   const accessCode = (() => { try { return localStorage.getItem('sh-access-code') || '' } catch { return '' } })()
 
   const loadInvites = useCallback(async () => {
@@ -144,10 +146,19 @@ export default function SettingsPage() {
                 )}
               </div>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              After sending, contact support with your access code and transaction hash. Credits are added manually.
-            </p>
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => { setShowAddress(false); setBuyAmount('') }}>
+            <div style={{ marginTop: 8 }}>
+              <input type="text" value={txHash} onChange={e => setTxHash(e.target.value)}
+                placeholder="Transaction signature (optional)" style={{ fontSize: 12, width: '100%', marginBottom: 6 }} />
+              <button className="btn btn-primary btn-sm btn-block" onClick={async () => {
+                const code = localStorage.getItem('sh-access-code') || ''
+                await fetch(`/api/payment/request?code=${encodeURIComponent(code)}&amount_sol=${buyAmount}&tx_hash=${encodeURIComponent(txHash)}`, { method: 'POST' })
+                setPaymentSent(true)
+              }}>
+                I have sent the payment
+              </button>
+            </div>
+            {paymentSent && <p style={{ fontSize: 12, color: 'var(--green)', marginTop: 6 }}>Reported. Admin will credit you after verification.</p>}
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => { setShowAddress(false); setBuyAmount(''); setTxHash(''); setPaymentSent(false) }}>
               Cancel
             </button>
           </div>

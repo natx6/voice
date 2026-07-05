@@ -177,6 +177,62 @@ async def admin_login(request: Request):
         raise e
 
 
+@app.post("/api/payment/request")
+async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = ""):
+    """User reports they sent payment. Creates a pending request for admin."""
+    if not code or amount_sol <= 0:
+        raise HTTPException(400, "Access code and amount required")
+    import json
+    p = Path.home() / ".soundhuman" / "payment_requests.json"
+    reqs = []
+    if p.exists():
+        reqs = json.loads(p.read_text())
+    reqs.append({
+        "code": code,
+        "amount_sol": amount_sol,
+        "tx_hash": tx_hash or "manual",
+        "status": "pending",
+        "created": str(__import__("datetime").datetime.now())[:19],
+    })
+    p.write_text(json.dumps(reqs, indent=2))
+    return {"status": "pending", "message": "Payment reported. Admin will credit you after verification."}
+
+
+@app.get("/api/admin/payments")
+async def admin_payments(request: Request):
+    """Admin: view pending payment requests."""
+    _require_admin(request)
+    p = Path.home() / ".soundhuman" / "payment_requests.json"
+    if p.exists():
+        import json
+        return {"payments": json.loads(p.read_text())}
+    return {"payments": []}
+
+
+@app.post("/api/admin/payments/approve")
+async def admin_approve_payment(request: Request, idx: int = 0):
+    """Admin: approve a payment request, add credits to user."""
+    _require_admin(request)
+    import json
+    p = Path.home() / ".soundhuman" / "payment_requests.json"
+    if not p.exists():
+        raise HTTPException(404, "No payment requests")
+    reqs = json.loads(p.read_text())
+    if idx < 0 or idx >= len(reqs):
+        raise HTTPException(404, "Request not found")
+    req = reqs[idx]
+    if req["status"] == "approved":
+        raise HTTPException(400, "Already approved")
+    # Calculate credits from SOL amount
+    credits = max(1, int(req["amount_sol"] / 0.035))
+    from api.credits import add_credits
+    add_credits(req["code"], credits, f"payment:{req['tx_hash']}")
+    reqs[idx]["status"] = "approved"
+    reqs[idx]["credits_added"] = credits
+    p.write_text(json.dumps(reqs, indent=2))
+    return {"status": "approved", "credits_added": credits}
+
+
 @app.get("/api/payment/wallet")
 async def payment_wallet():
     """Public endpoint: returns all configured wallet addresses."""

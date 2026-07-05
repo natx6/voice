@@ -21,7 +21,7 @@ export default function AdminPage({ onAuth }: Props) {
   })
   const [tokenInput, setTokenInput] = useState('')
   const [tokenError, setTokenError] = useState('')
-  const [tab, setTab] = useState<'users' | 'credits' | 'codes' | 'settings'>('users')
+  const [tab, setTab] = useState<'users' | 'credits' | 'invites' | 'payments' | 'settings'>('users')
   const [users, setUsers] = useState<any[]>([])
   const [recvWallet, setRecvWallet] = useState('')
   const [solWallet, setSolWallet] = useState('')
@@ -36,6 +36,7 @@ export default function AdminPage({ onAuth }: Props) {
   const [genCodeCount, setGenCodeCount] = useState(1)
   const [genCodeCredits, setGenCodeCredits] = useState(10)
   const [newCodes, setNewCodes] = useState<any[]>([])
+  const [payments, setPayments] = useState<any[]>([])
 
   const loadUsers = useCallback(async () => {
     if (!token) return
@@ -59,6 +60,19 @@ export default function AdminPage({ onAuth }: Props) {
   }, [token])
 
   useEffect(() => { if (token) loadSettings() }, [token, loadSettings])
+
+  const loadPayments = useCallback(async () => {
+    if (!token) return
+    try { const d = await adminFetch('/admin/payments', token); setPayments(d.payments || []) } catch {}
+  }, [token])
+
+  const approvePayment = useCallback(async (idx: number) => {
+    if (!token) return
+    try {
+      await adminFetch(`/admin/payments/approve?idx=${idx}`, token, { method: 'POST' })
+      loadPayments()
+    } catch {}
+  }, [token, loadPayments])
 
   const loadCodes = useCallback(async () => {
     if (!token) return
@@ -124,10 +138,10 @@ export default function AdminPage({ onAuth }: Props) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 4, background: 'var(--surface)', borderRadius: 'var(--radius)', padding: 4 }}>
-          {(['users', 'credits', 'codes', 'settings'] as const).map(t => (
+          {(['users', 'credits', 'payments', 'invites', 'settings'] as const).map(t => (
             <button key={t} className={`btn btn-sm${tab === t ? ' btn-primary' : ' btn-ghost'}`}
-              onClick={() => { setTab(t); if (t === 'codes') loadCodes() }} style={{ flex: 1 }}>
-              {t === 'users' ? 'Users' : t === 'credits' ? 'Credits' : t === 'codes' ? 'Codes' : 'Settings'}
+              onClick={() => { setTab(t); if (t === 'invites') loadCodes() }} style={{ flex: 1 }}>
+              {t === 'users' ? 'Users' : t === 'credits' ? 'Credits' : t === 'payments' ? 'Payments' : t === 'invites' ? 'Invites' : 'Settings'}
             </button>
           ))}
         </div>
@@ -166,10 +180,37 @@ export default function AdminPage({ onAuth }: Props) {
         </div>
       )}
 
-      {tab === 'codes' && (
+      {tab === 'payments' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+              Payment Requests ({payments.filter((p: any) => p.status === 'pending').length} pending)
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setTab('payments'); loadPayments() }}>Refresh</button>
+          </div>
+          {payments.length === 0 ? <div className="card"><p style={{ fontSize: 13, color: 'var(--text-dim)', fontStyle: 'italic' }}>No payment requests yet.</p></div> : null}
+          {payments.map((p: any, i: number) => (
+            <div key={i} className="history-item" style={{ opacity: p.status === 'approved' ? 0.5 : 1 }}>
+              <div className="info">
+                <div className="name">{p.code?.slice(0, 12)}... · {p.amount_sol} SOL</div>
+                <div className="meta">{p.created} · {p.tx_hash?.slice(0, 16) || 'manual'}</div>
+              </div>
+              <div className="actions">
+                {p.status === 'pending' ? (
+                  <button className="btn btn-primary btn-sm" onClick={() => approvePayment(i)}>Approve</button>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>Approved</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'invites' && (
         <div>
           <div className="card" style={{ padding: 16 }}>
-            <div className="card-title">Generate Access Codes</div>
+            <div className="card-title">Generate Invite Codes</div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <input type="number" value={genCodeCount} onChange={e => setGenCodeCount(parseInt(e.target.value) || 1)}
                 min={1} max={50} style={{ width: 60 }} placeholder="Count" />
