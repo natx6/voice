@@ -86,7 +86,10 @@ header .status-badge.offline { background: var(--red-dim); color: var(--red); }
 
 /* ── Tabs ── */
 
-.tab-bar { display: flex; gap: 2px; margin-bottom: 24px; border-bottom: 1px solid var(--border); }
+.tab-bar {
+  display: flex; gap: 2px; margin-bottom: 24px; position: sticky; top: 0; z-index: 10;
+  background: var(--bg); padding-top: 8px;
+}
 .tab-bar button {
   flex: 1; padding: 10px 0 8px; border: none; background: none;
   font-size: 13px; font-weight: 500; cursor: pointer;
@@ -101,9 +104,8 @@ header .status-badge.offline { background: var(--red-dim); color: var(--red); }
 .card {
   background: var(--surface); border-radius: var(--radius-sm);
   padding: 20px; margin-bottom: 16px;
-  border: 1px solid var(--border); transition: border-color 0.15s;
+  border: 1px solid var(--border);
 }
-.card:hover { border-color: var(--border-light); }
 .card-title {
   font-size: 11px; font-weight: 600; color: var(--text-dim); margin-bottom: 12px;
   text-transform: uppercase; letter-spacing: 0.8px;
@@ -123,7 +125,7 @@ header .status-badge.offline { background: var(--red-dim); color: var(--red); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .btn-danger { background: var(--red); color: white; }
 .btn-ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-.btn-ghost:hover { border-color: var(--accent); }
+.btn-ghost:hover { background: var(--surface); }
 .btn-sm { padding: 5px 10px; font-size: 11px; border-radius: var(--radius-xs); }
 .btn-lg { padding: 10px 20px; font-size: 14px; }
 .btn-block { width: 100%; }
@@ -156,10 +158,8 @@ label { display: block; font-size: 11px; font-weight: 600; color: var(--text-dim
 .history-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border-radius: var(--radius-xs);
-  border: 1px solid var(--border); margin-bottom: 6px;
-  transition: background 0.1s;
+  margin-bottom: 6px;
 }
-.history-item:hover { background: var(--surface-2); }
 .history-item .icon {
   width: 28px; height: 28px; border-radius: 6px;
   display: flex; align-items: center; justify-content: center;
