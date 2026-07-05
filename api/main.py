@@ -264,11 +264,18 @@ async def generate_invites(code: str = ""):
 
 @app.post("/api/auth/signup")
 async def auth_signup(email: str = "", invite: str = ""):
-    """Sign up with email + invite code. Returns access code."""
-    success, msg, code = access.signup(email, invite)
+    """Sign up with email + invite code. Returns access code + optional admin token."""
+    result = access.signup(email, invite)
+    success, msg = result[0], result[1]
+    code = result[2]
+    admin_token = result[3] if len(result) > 3 else ""
     if not success:
         raise HTTPException(400, msg)
-    return {"status": "ok", "access_code": code, "message": "Save this code — you'll need it to log in."}
+    resp = {"status": "ok", "access_code": code, "message": "Save this code — you'll need it to log in."}
+    if admin_token:
+        resp["admin_token"] = admin_token
+        resp["message"] += " You're the first user — admin access granted automatically."
+    return resp
 
 
 @app.post("/api/auth/login")

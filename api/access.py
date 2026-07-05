@@ -44,7 +44,7 @@ def generate_access_code() -> str:
 
 
 def signup(email: str, invite_code: str) -> tuple[bool, str, str]:
-    """Sign up with email + invite code. Returns (success, msg, access_code)."""
+    """Sign up with email + invite code. Returns (success, msg, access_code, admin_token)."""
     with _lock:
         if not email or "@" not in email:
             return False, "Valid email required", ""
@@ -97,7 +97,13 @@ def signup(email: str, invite_code: str) -> tuple[bool, str, str]:
             codes[code]["invite_codes"] = user_codes
             _save("access_codes.json", codes)
 
-        return True, "", code
+        # If this was the bootstrap invite, also return the admin token
+        admin_token = ""
+        if inviter == "bootstrap":
+            from api.main import _get_admin_token
+            admin_token = _get_admin_token()
+
+        return True, "", code, admin_token
 
 
 def login(code: str, device_id: str = "") -> tuple[bool, str, dict]:

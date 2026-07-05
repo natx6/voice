@@ -38,6 +38,10 @@ export default function AccessAuth({ onAuth }: Props) {
       const d = await r.json()
       if (!r.ok) throw new Error(d.detail || 'Signup failed')
       setAccessCode(d.access_code)
+      // If first user (bootstrap), also store admin token
+      if (d.admin_token) {
+        localStorage.setItem('sh-admin-token', d.admin_token)
+      }
       setMode('showcode')
     } catch (e: any) { setError(e.message) }
     finally { setLoading(false) }
