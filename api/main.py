@@ -350,28 +350,45 @@ async def auth_login(request: Request, code: str = ""):
     return {"status": "ok", "user": data}
 
 
-@app.post("/api/admin/codes")
-async def admin_generate_codes(request: Request, count: int = 1, credits: int = 10):
+@app.post("/api/admin/invites")
+async def admin_generate_invites(request: Request, count: int = 1):
     _require_admin(request)
+    import secrets
+    from api.access import _load, _save
     count = max(1, min(count, 50))
-    codes = access.admin_generate_codes(count, credits)
+    invites = _load("invites.json")
+    codes = []
+    for _ in range(count):
+        code = secrets.token_urlsafe(10)
+        invites[code] = {"created_by": "admin", "used_by": None}
+        codes.append({"code": code, "credits": 2})
+    _save("invites.json", invites)
     return {"status": "ok", "codes": codes}
 
 
-@app.get("/api/admin/codes")
-async def admin_list_codes(request: Request):
+@app.get("/api/admin/invites")
+async def admin_list_invites(request: Request):
     _require_admin(request)
-    return {"codes": access.admin_list_codes()}
+    from api.access import _load
+    invites = _load("invites.json")
+    result = []
+    for code, data in invites.items():
+        result.append({"code": code, "used": bool(data.get("used_by")), "created_by": data.get("created_by", "")})
+    return {"invites": sorted(result, key=lambda x: x["code"], reverse=True)}
 
 
-@app.post("/api/admin/codes/revoke")
-async def admin_revoke_code(request: Request, code: str = ""):
+@app.post("/api/admin/invites/revoke")
+async def admin_revoke_invite(request: Request, code: str = ""):
     _require_admin(request)
+    from api.access import _load, _save
     if not code:
         raise HTTPException(400, "Code required")
-    if access.admin_revoke(code):
-        return {"status": "revoked"}
-    raise HTTPException(404, "Code not found")
+    invites = _load("invites.json")
+    if code not in invites:
+        raise HTTPException(404, "Code not found")
+    invites[code]["used_by"] = "revoked"
+    _save("invites.json", invites)
+    return {"status": "revoked"}
 
 
 @app.get("/api/onboard")

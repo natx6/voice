@@ -76,17 +76,17 @@ export default function AdminPage({ onAuth }: Props) {
 
   const loadCodes = useCallback(async () => {
     if (!token) return
-    try { const d = await adminFetch('/admin/codes', token); setCodes(d.codes || []) } catch {}
+    try { const d = await adminFetch('/admin/invites', token); setCodes(d.invites || []) } catch {}
   }, [token])
 
   const handleGenCodes = useCallback(async () => {
     if (!token) return
     try {
-      const d = await adminFetch(`/admin/codes?count=${genCodeCount}&credits=${genCodeCredits}`, token, { method: 'POST' })
+      const d = await adminFetch(`/admin/invites?count=${genCodeCount}`, token, { method: 'POST' })
       setNewCodes(d.codes || [])
       loadCodes()
     } catch {}
-  }, [token, genCodeCount, genCodeCredits, loadCodes])
+  }, [token, genCodeCount, loadCodes])
 
   const handleLogin = useCallback(async () => {
     try {
@@ -214,36 +214,33 @@ export default function AdminPage({ onAuth }: Props) {
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
               <input type="number" value={genCodeCount} onChange={e => setGenCodeCount(parseInt(e.target.value) || 1)}
                 min={1} max={50} style={{ width: 60 }} placeholder="Count" />
-              <input type="number" value={genCodeCredits} onChange={e => setGenCodeCredits(parseInt(e.target.value) || 10)}
-                min={1} max={1000} style={{ width: 80 }} placeholder="Credits" />
               <button className="btn btn-primary btn-sm" onClick={handleGenCodes}>Generate</button>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Each code gets {genCodeCredits} credits. Copy and send to users.</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>Each invite gives 2 credits on signup. Copy and send to users.</div>
           </div>
           {newCodes.length > 0 && (
             <div className="card" style={{ padding: 16, borderColor: 'var(--green)' }}>
-              <div className="card-title">New Codes</div>
+              <div className="card-title">New Invite Codes</div>
               {newCodes.map((c, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, padding: '6px 8px', background: 'var(--surface-2)', borderRadius: 4 }}>
                   <code style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}>{c.code}</code>
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{c.credits} credits</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard.writeText(c.code)}>Copy</button>
                 </div>
               ))}
             </div>
           )}
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-dim)', marginTop: 16, marginBottom: 8, textTransform: 'uppercase' }}>
-            All Codes ({codes.length})
+            All Invites ({codes.length})
           </div>
           {codes.map(c => (
-            <div key={c.code} className="history-item" style={{ opacity: c.active ? 1 : 0.4 }}>
+            <div key={c.code} className="history-item" style={{ opacity: c.used ? 0.4 : 1 }}>
               <div className="info">
                 <div className="name" style={{ fontFamily: 'monospace', fontSize: 12 }}>{c.code}</div>
-                <div className="meta">{c.email || 'unused'} · {c.balance} credits · {c.created?.slice(0, 10)}{c.device ? ' · device registered' : ''}</div>
+                <div className="meta">{c.used ? 'Used' : 'Available'} · by {c.created_by || 'admin'}</div>
               </div>
               <div className="actions">
-                {c.active && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700 }}>Active</span>}
-                {!c.active && <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700 }}>Revoked</span>}
+                {!c.used && <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700 }}>Live</span>}
+                {c.used && <span style={{ fontSize: 10, color: 'var(--text-dim)', fontWeight: 700 }}>Used</span>}
               </div>
             </div>
           ))}
