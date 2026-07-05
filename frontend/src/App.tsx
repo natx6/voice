@@ -7,6 +7,7 @@ import SettingsPage from './components/SettingsPage'
 import AdminPage from './components/AdminPage'
 import AccessAuth from './components/AccessAuth'
 import WalletStatus from './components/WalletStatus'
+import ThemeToggle from './components/ThemeToggle'
 
 const DEFAULT_SETTINGS: VoiceSettings = {
   stability: 0.30, similarity_boost: 0.95, style_exaggeration: 0,
@@ -14,7 +15,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
 }
 
 export default function App() {
-  const hasAdminToken = (() => { try { return !!localStorage.getItem('sh-admin-token') } catch { return false } })()
+  const [hasAdmin, setHasAdmin] = useState(() => {
+    try { return !!localStorage.getItem('sh-admin-token') } catch { return false }
+  })
   const [tab, setTab] = useState<string>('create')
   const [status, setStatus] = useState<string>('connecting')
   const [voices, setVoices] = useState<VoiceInfo[]>([])
@@ -28,6 +31,13 @@ export default function App() {
 
   const showToast = useCallback((msg: string) => {
     setToast(msg); setTimeout(() => setToast(null), 3000)
+  }, [])
+
+  const handleSignOut = useCallback(() => {
+    localStorage.removeItem('sh-access-code')
+    localStorage.removeItem('sh-admin-token')
+    setAccessCode('')
+    setHasAdmin(false)
   }, [])
 
   // Load status + voices on mount (cached for instant display)
@@ -80,11 +90,14 @@ export default function App() {
             <div className="subtitle">code: {accessCode.slice(0, 8)}...</div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <WalletStatus />
-          <div className={`status-badge ${status}`} style={{ padding: '4px 8px' }}>
+          <ThemeToggle />
+          <div className={`status-badge ${status}`}>
             <span className={`status-dot ${status}`} />
           </div>
+          <button className="btn btn-ghost btn-sm" onClick={handleSignOut}
+            style={{ fontSize: 11, padding: '4px 8px' }}>Sign Out</button>
         </div>
       </header>
 
@@ -92,7 +105,7 @@ export default function App() {
         <button className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>Create</button>
         <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>History</button>
         <button className={tab === 'settings' ? 'active' : ''} onClick={() => setTab('settings')}>Settings</button>
-        {hasAdminToken && (
+        {hasAdmin && (
           <button className={tab === 'admin' ? 'active' : ''} onClick={() => setTab('admin') as any}>Admin</button>
         )}
       </div>
@@ -109,7 +122,7 @@ export default function App() {
 
       {tab === 'settings' && <SettingsPage />}
 
-      {tab === 'admin' && hasAdminToken && <AdminPage />}
+      {tab === 'admin' && hasAdmin && <AdminPage onAuth={() => setHasAdmin(true)} />}
 
       {toast && <div className="toast">{toast}</div>}
     </>

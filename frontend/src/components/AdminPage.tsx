@@ -11,7 +11,11 @@ function adminFetch(path: string, token: string, init?: RequestInit) {
   })
 }
 
-export default function AdminPage() {
+interface Props {
+  onAuth?: () => void
+}
+
+export default function AdminPage({ onAuth }: Props) {
   const [token, setToken] = useState(() => {
     try { return localStorage.getItem('sh-admin-token') || '' } catch { return '' }
   })
@@ -24,6 +28,7 @@ export default function AdminPage() {
   const [ltcWallet, setLtcWallet] = useState('')
   const [xmrWallet, setXmrWallet] = useState('')
   const [usdPerCredit, setUsdPerCredit] = useState(5.0)
+  const [purchasesBlocked, setPurchasesBlocked] = useState(false)
   const [creditWallet, setCreditWallet] = useState('')
   const [creditAmount, setCreditAmount] = useState(5)
   const [creditMsg, setCreditMsg] = useState('')
@@ -49,6 +54,7 @@ export default function AdminPage() {
       setLtcWallet(s.ltc_wallet || '')
       setXmrWallet(s.xmr_wallet || '')
       setUsdPerCredit(s.usd_per_credit || 5.0)
+      setPurchasesBlocked(s.purchases_blocked || false)
     } catch {}
   }, [token])
 
@@ -74,6 +80,7 @@ export default function AdminPage() {
       setToken(tokenInput.trim())
       localStorage.setItem('sh-admin-token', tokenInput.trim())
       setTokenError('')
+      if (onAuth) onAuth()
     } catch { setTokenError('Invalid admin token') }
   }, [tokenInput])
 
@@ -92,6 +99,7 @@ export default function AdminPage() {
     localStorage.removeItem('sh-admin-token')
     setToken('')
     setTokenInput('')
+    if (onAuth) onAuth()
   }
 
   if (!token) {
@@ -227,9 +235,16 @@ export default function AdminPage() {
               Converts to SOL/LTC/XMR at current market rates.
             </div>
           </div>
+          <div className="form-group">
+            <label>Block Purchases</label>
+            <button className={`btn btn-sm ${purchasesBlocked ? 'btn-danger' : 'btn-ghost'}`}
+              onClick={() => setPurchasesBlocked(!purchasesBlocked)}>
+              {purchasesBlocked ? 'Blocked — click to allow' : 'Allowed — click to block'}
+            </button>
+          </div>
           <button className="btn btn-primary" onClick={async () => {
             try {
-              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&usd_per_credit=${usdPerCredit}`, token, { method: 'POST' })
+              await adminFetch(`/admin/settings?sol_wallet=${encodeURIComponent(solWallet)}&ltc_wallet=${encodeURIComponent(ltcWallet)}&xmr_wallet=${encodeURIComponent(xmrWallet)}&receiving_wallet=${encodeURIComponent(recvWallet)}&usd_per_credit=${usdPerCredit}&purchases_blocked=${purchasesBlocked}`, token, { method: 'POST' })
             } catch {}
           }}>Save</button>
         </div>

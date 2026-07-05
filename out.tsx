@@ -31,7 +31,10 @@ export default function SettingsPage() {
     }).then(r => r.json()).then(d => {
       if (d.user) { setBalance(d.user.balance ?? 0); setEmail(d.user.email || '') }
     }).catch(() => {})
-    fetch('/api/payment/wallet').then(r => r.json()).then(d => { setWallets(d || {}); setPurchasesBlocked(d.purchases_blocked || false) }).catch(() => {})
+    fetch('/api/payment/wallet').then(r => r.json()).then(d => {
+      setWallets(d || {})
+      setPurchasesBlocked(d.purchases_blocked || false)
+    }).catch(() => {})
     fetch('/api/pricing').then(r => r.json()).then(d => {
       setUsdPrice(d.usd_per_credit || 5.0)
       setSolRate(d.sol_per_credit || 0.035)
@@ -94,10 +97,9 @@ export default function SettingsPage() {
         <div className="card-title">Buy Credits</div>
         {purchasesBlocked ? (
           <div style={{ fontSize: 13, color: 'var(--text-dim)', fontStyle: 'italic', padding: '8px 0' }}>
-            Purchases are temporarily disabled.
+            Purchases are temporarily disabled. Check back later.
           </div>
-        ) : (
-        <div>
+        ) : (<>
         <div style={{ fontSize: 13, marginBottom: 8, lineHeight: 1.6 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
             <span>1 credit</span>
@@ -152,8 +154,8 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
-        </div>
-        )}
+        </>)
+        }
       </div>
     </div>
   )

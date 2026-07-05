@@ -181,13 +181,14 @@ async def admin_login(request: Request):
 async def payment_wallet():
     """Public endpoint: returns all configured wallet addresses."""
     p = Path.home() / ".soundhuman" / "settings.json"
-    result = {"sol": "", "ltc": "", "xmr": ""}
+    result = {"sol": "", "ltc": "", "xmr": "", "purchases_blocked": False}
     if p.exists():
         import json
         data = json.loads(p.read_text())
         result["sol"] = data.get("sol_wallet", "")
         result["ltc"] = data.get("ltc_wallet", "")
         result["xmr"] = data.get("xmr_wallet", "")
+        result["purchases_blocked"] = data.get("purchases_blocked", False)
     return result
 
 
@@ -381,7 +382,8 @@ async def admin_update_settings(request: Request,
                                 usd_per_credit: float = 5.0,
                                 sol_wallet: str = "",
                                 ltc_wallet: str = "",
-                                xmr_wallet: str = ""):
+                                xmr_wallet: str = "",
+                                purchases_blocked: bool = False):
     _require_admin(request)
     import json
     p = Path.home() / ".soundhuman" / "settings.json"
@@ -391,6 +393,7 @@ async def admin_update_settings(request: Request,
         data = json.loads(p.read_text())
     data["receiving_wallet"] = receiving_wallet
     data["usd_per_credit"] = usd_per_credit
+    data["purchases_blocked"] = purchases_blocked
     if sol_wallet: data["sol_wallet"] = sol_wallet
     if ltc_wallet: data["ltc_wallet"] = ltc_wallet
     if xmr_wallet: data["xmr_wallet"] = xmr_wallet
