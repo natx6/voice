@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>soundhuman — Install</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f7; color: #1d1d1f;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 20px;
+  }
+  .card {
+    background: white; border-radius: 14px; padding: 40px;
+    max-width: 520px; width: 100%; text-align: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+  .sub { color: #86868b; font-size: 14px; margin-bottom: 24px; }
+  .logo {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: #0066cc; display: flex; align-items: center;
+    justify-content: center; font-size: 22px; font-weight: 700;
+    color: white; margin: 0 auto 16px;
+  }
+  .btn {
+    display: block; width: 100%; padding: 14px; border: none;
+    border-radius: 10px; font-size: 15px; font-weight: 600;
+    cursor: pointer; text-decoration: none; margin-bottom: 10px;
+    transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn-win { background: #0066cc; color: white; }
+  .btn-mac { background: #1d1d1f; color: white; }
+  .btn-linux { background: #e6a00e; color: white; }
+  .btn-ghost { background: #f0f0f2; color: #1d1d1f; border: 1px solid #e0e0e2; }
+  .step { text-align: left; margin: 20px 0; padding: 14px; background: #f5f5f7; border-radius: 10px; }
+  .step h3 { font-size: 13px; margin-bottom: 4px; }
+  .step p { font-size: 13px; color: #86868b; }
+  code { background: #e8e8ea; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  .footer { margin-top: 20px; font-size: 12px; color: #aeaeb2; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">sh</div>
+  <h1>soundhuman</h1>
+  <p class="sub">Install the app on your computer for full capture support</p>
+
+  <h3 style="font-size:13px;color:#86868b;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px">
+    Choose your OS
+  </h3>
+
+  <a class="btn btn-win" href="install.bat" download>
+    🪟 Windows — Download Installer
+  </a>
+  <a class="btn btn-mac" href="install.sh" download>
+    🍎 macOS — Download Installer
+  </a>
+  <a class="btn btn-linux" href="install.sh" download>
+    🐧 Linux — Download Installer
+  </a>
+
+  <div style="margin:20px 0;font-size:13px;color:#86868b;text-align:left">
+    <h3 style="margin-bottom:8px">After installation:</h3>
+    <div class="step"><h3>1. Set your audio input</h3>
+    <p>Open your app (Telegram, WhatsApp, Discord) and select <strong>VoiceChanger</strong> or <strong>CABLE Input</strong> as your microphone.</p></div>
+    <div class="step"><h3>2. Launch the app</h3>
+    <p>Run the <code>start</code> script. Open http://localhost:8766 in your browser.</p></div>
+    <div class="step"><h3>3. Generate and capture</h3>
+    <p>Type text, generate audio, click Capture — it plays through the virtual mic into your chat app.</p></div>
+  </div>
+
+  <details style="margin-top:12px;text-align:left;font-size:13px;color:#86868b">
+    <summary>Already have an access code?</summary>
+    <p style="margin-top:8px">Open the app, enter your access code, and start generating.</p>
+  </details>
+
+  <p class="footer">
+    soundhuman · Text that sounds like you.
+  </p>
+</div>
+<script>
+  // Auto-detect OS and suggest the right download
+  (function() {
+    var ua = navigator.userAgent;
+    var btns = document.querySelectorAll('.btn');
+    if (ua.indexOf('Windows') > -1) btns[0].style.border = '2px solid #000';
+    else if (ua.indexOf('Mac') > -1) btns[1].style.border = '2px solid #000';
+    else if (ua.indexOf('Linux') > -1) btns[2].style.border = '2px solid #000';
+  })();
+</script>
+</body>
+</html>

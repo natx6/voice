@@ -475,6 +475,25 @@ async def admin_revoke_invite(request: Request, code: str = ""):
     return {"status": "revoked"}
 
 
+@app.get("/api/install/download")
+async def install_download():
+    """Download the latest frontend build as a zip."""
+    import zipfile, io
+    frontend_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if not frontend_dir.exists():
+        raise HTTPException(404, "Frontend build not found")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in frontend_dir.rglob("*"):
+            if f.is_file():
+                arcname = str(f.relative_to(frontend_dir))
+                z.write(f, arcname)
+    buf.seek(0)
+    from fastapi.responses import Response
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": "attachment; filename=soundhuman-frontend.zip"})
+
+
 @app.get("/api/onboard")
 async def onboard_suggest():
     return {"suggestion": users.generate_username()}
