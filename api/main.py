@@ -434,6 +434,33 @@ async def auth_login(request: Request, code: str = ""):
     return {"status": "ok", "user": data}
 
 
+@app.post("/api/admin/generate")
+async def admin_generate_access(request: Request, count: int = 1, credits: int = 10, tag: str = ""):
+    """Admin: generate access codes pre-loaded with credits. No signup needed."""
+    _require_admin(request)
+    from api.access import generate_access_code, _load, _save
+    from api.credits import add_credits as add_c
+    count = max(1, min(count, 50))
+    codes_data = _load("access_codes.json")
+    result = []
+    for _ in range(count):
+        code = generate_access_code()
+        codes_data[code] = {
+            "email": f"prepaid_{code[:8]}",
+            "email_hash": code[:16],
+            "invite_code": "admin",
+            "credits_granted": credits,
+            "tag": tag,
+            "active": True,
+            "device_id": "",
+            "created": str(__import__("datetime").datetime.now())[:19],
+        }
+        add_c(code, credits, f"admin_generated:{code}")
+        result.append({"code": code, "credits": credits})
+    _save("access_codes.json", codes_data)
+    return {"status": "ok", "codes": result}
+
+
 @app.post("/api/admin/invites")
 async def admin_generate_invites(request: Request, count: int = 1):
     _require_admin(request)
