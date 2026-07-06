@@ -201,9 +201,11 @@ async def _send_tg(msg: str):
 
 
 @app.post("/api/payment/request")
-async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = ""):
-    """User reports they sent payment. Creates a pending request for admin."""
-    if not code or amount_sol <= 0:
+async def payment_request(code: str = "", amount_usd: float = 0, amount_sol: float = 0, tx_hash: str = ""):
+    """User reports they sent payment. Creates a pending request for admin.
+    Accepts amount_usd (recommended) or amount_sol (legacy)."""
+    amount = amount_usd if amount_usd > 0 else amount_sol
+    if not code or amount <= 0:
         raise HTTPException(400, "Access code and amount required")
     import json
     p = Path.home() / ".soundhuman" / "payment_requests.json"
@@ -213,7 +215,7 @@ async def payment_request(code: str = "", amount_sol: float = 0, tx_hash: str = 
     idx = len(reqs)
     reqs.append({
         "code": code,
-        "amount_sol": amount_sol,
+        "amount_usd": amount,
         "tx_hash": tx_hash or "manual",
         "status": "pending",
         "created": str(__import__("datetime").datetime.now())[:19],
@@ -269,18 +271,8 @@ async def admin_approve_payment(request: Request, idx: int = 0):
     req = reqs[idx]
     if req["status"] == "approved":
         raise HTTPException(400, "Already approved")
-    # Calculate credits from SOL amount
-    # Get current SOL/USD rate from CoinGecko
-    import httpx
-    sol_usd = 140.0
-    try:
-        r = httpx.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", timeout=3)
-        if r.status_code == 200:
-            sol_usd = r.json().get("solana", {}).get("usd", 140.0)
-    except Exception:
-        pass
-    # Convert SOL → USD → credits at admin-set price
-    usd_value = req["amount_sol"] * sol_usd
+    # Credits calculated directly from USD amount at admin-set price
+    usd_value = req.get("amount_usd", 0) or 0
     # Get admin price per credit
     settings_path = Path.home() / ".soundhuman" / "settings.json"
     usd_per_credit = 5.0

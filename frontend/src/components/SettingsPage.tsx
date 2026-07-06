@@ -96,8 +96,7 @@ export default function SettingsPage() {
             <input type="text" value={txHash} onChange={e => setTxHash(e.target.value)} placeholder="Transaction signature (optional)" style={{ fontSize: 12, width: '100%', marginBottom: 6 }} />
             <button className="btn btn-primary btn-sm btn-block" onClick={async () => {
               const code = localStorage.getItem('sh-access-code') || ''
-              const solAmount = (parseFloat(buyAmount) * solRate / usdPrice).toFixed(6)
-              await fetch(`/api/payment/request?code=${encodeURIComponent(code)}&amount_sol=${solAmount}&tx_hash=${encodeURIComponent(txHash)}`, { method: 'POST' })
+              await fetch(`/api/payment/request?code=${encodeURIComponent(code)}&amount_usd=${buyAmount}&tx_hash=${encodeURIComponent(txHash)}`, { method: 'POST' })
               setPaymentSent(true)
             }}>I have sent the payment</button>
             {paymentSent && <p style={{ fontSize: 12, color: 'var(--green)', marginTop: 6 }}>Reported. Admin will credit you after verification.</p>}

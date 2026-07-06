@@ -198,7 +198,7 @@ export default function AdminPage({ onAuth }: Props) {
           {payments.map((p: any, i: number) => (
             <div key={i} className="history-item" style={{ opacity: p.status === 'approved' ? 0.5 : 1 }}>
               <div className="info">
-                <div className="name">{p.code?.slice(0, 12)}... · {p.amount_sol} SOL</div>
+                <div className="name">{p.code?.slice(0, 12)}... · ${p.amount_usd || p.amount_sol} USD</div>
                 <div className="meta">{p.created} · {p.tx_hash?.slice(0, 16) || 'manual'}</div>
               </div>
               <div className="actions">
