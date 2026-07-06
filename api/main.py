@@ -23,7 +23,7 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 # Add parent so we can use the shared history JSON on disk
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -473,6 +473,87 @@ async def admin_revoke_invite(request: Request, code: str = ""):
     invites[code]["used_by"] = "revoked"
     _save("invites.json", invites)
     return {"status": "revoked"}
+
+
+LANDING_PAGE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>soundhuman</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+  .card{background:#fff;border-radius:16px;padding:40px;max-width:440px;width:100%;text-align:center;box-shadow:0 2px 12px rgba(0,0,0,0.08)}
+  .logo{width:52px;height:52px;border-radius:14px;background:#0066cc;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;margin:0 auto 12px}
+  h1{font-size:26px;font-weight:700;letter-spacing:-0.5px}
+  .sub{color:#86868b;font-size:14px;margin-bottom:20px}
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;margin-bottom:8px;transition:opacity .15s}
+  .btn:hover{opacity:.85}
+  .btn-win{background:#0066cc;color:#fff}
+  .btn-mac{background:#1d1d1f;color:#fff}
+  .btn-linux{background:#e6a00e;color:#fff}
+  .divider{height:1px;background:#e0e0e2;margin:20px 0}
+  input{width:100%;padding:12px 14px;border:1px solid #e0e0e2;border-radius:10px;font-size:14px;outline:none;margin-bottom:8px}
+  input:focus{border-color:#0066cc}
+  .btn-primary{background:#0066cc;color:#fff;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;width:100%}
+  .btn-primary:disabled{opacity:.4}
+  .footer{font-size:12px;color:#aeaeb2;margin-top:16px}
+  .tag{font-size:12px;color:#86868b;margin-bottom:20px}
+  .detected{border:2px solid #0066cc!important}
+  .err{color:#ff3b30;font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">sh</div>
+  <h1>soundhuman</h1>
+  <p class="sub">Text that sounds like you.</p>
+  <p class="tag">Download the app for your platform</p>
+  <a class="btn btn-win" id="dl-win" href="/install/install.bat" download>🪟 Download for Windows</a>
+  <a class="btn btn-mac" id="dl-mac" href="/install/install.sh" download>🍎 Download for macOS</a>
+  <a class="btn btn-linux" id="dl-linux" href="/install/install.sh" download>🐧 Download for Linux</a>
+  <div class="divider"></div>
+  <p class="tag" style="margin-bottom:8px">Already have the app? Sign in</p>
+  <input type="text" id="code" placeholder="Enter your access code" autocomplete="off">
+  <div id="error" class="err"></div>
+  <button class="btn-primary" id="login-btn" onclick="login()">Continue</button>
+  <div class="footer">soundhuman &middot; Install once, use anywhere</div>
+</div>
+<script>
+var ua=navigator.userAgent;
+if(ua.indexOf('Windows')>-1) document.getElementById('dl-win').className+=' detected';
+else if(ua.indexOf('Mac')>-1) document.getElementById('dl-mac').className+=' detected';
+else if(ua.indexOf('Linux')>-1) document.getElementById('dl-linux').className+=' detected';
+
+function login(){
+  var code=document.getElementById('code').value.trim();
+  var btn=document.getElementById('login-btn');
+  var err=document.getElementById('error');
+  if(!code){err.textContent='Enter your access code';return}
+  btn.disabled=true;btn.textContent='Signing in...';err.textContent='';
+  fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code})})
+  .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.detail||'Invalid code');return d})})
+  .then(function(d){
+    localStorage.setItem('sh-access-code',code);
+    window.location.href='/';
+    alert('Access code accepted. Open the local app (http://localhost:8766) and enter this code.');
+  })
+  .catch(function(e){err.textContent=e.message;btn.disabled=false;btn.textContent='Continue'})
+}
+</script>
+</body>
+</html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+async def landing():
+    return LANDING_PAGE
+
+
+@app.get("/install")
+async def install_page():
+    return landing()
 
 
 @app.get("/api/install/download")
