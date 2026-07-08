@@ -105,9 +105,18 @@ export default function TTSTab({
     finally { setRefining(false) }
   }, [rawText, flair, showToast, onRefinedTextChange])
 
+  const saveRecent = (text: string) => {
+    try {
+      const recent = JSON.parse(localStorage.getItem('sh-recent') || '[]')
+      const next = [text, ...recent.filter((t: string) => t !== text)].slice(0, 10)
+      localStorage.setItem('sh-recent', JSON.stringify(next))
+    } catch {}
+  }
+
   const handleGenerateDirect = useCallback(async () => {
     // Skip refinement, generate directly from raw text (user typed their own tags)
     if (!rawText.trim() || !voiceId) return
+    saveRecent(rawText)
     setGenerating(true)
     setGenPct(0)
     const estTotalSecs = Math.max(3, Math.round(rawText.length / 20))
@@ -161,6 +170,7 @@ export default function TTSTab({
     }, 200)
 
     try {
+      saveRecent(refinedText ?? rawText)
       if (genVariations) {
         const results = await api.generateTTSVariations(text, voiceId, settings, 3)
         setVariations(results)
@@ -233,8 +243,32 @@ export default function TTSTab({
             <textarea value={rawText} onChange={e => onRawTextChange(e.target.value)}
               placeholder="Paste what you want to say..." rows={6}
               style={{ fontSize: 15, lineHeight: 1.6, minHeight: 160 }} autoFocus />
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, textAlign: 'right' }}>
+              {rawText.length} chars · ~{Math.max(1, Math.round(rawText.length / 20))}s estimated
+            </div>
           </div>
-          <div style={{ marginTop: 12 }}>
+
+          {/* Recent prompts */}
+          {(() => {
+            const recent = (() => { try { return JSON.parse(localStorage.getItem('sh-recent') || '[]') } catch { return [] } })()
+            if (recent.length === 0 || rawText.length > 0) return null
+            return (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>Recent</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {recent.slice(0, 5).map((t: string, i: number) => (
+                    <button key={i} className="btn btn-ghost btn-sm"
+                      onClick={() => onRawTextChange(t)}
+                      style={{ fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t.slice(0, 30)}{t.length > 30 ? '...' : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
+          <div style={{ marginTop: 8 }}>
             <VoicePicker voices={voices} selected={voiceId} onChange={onSelectVoice} />
           </div>
           {rawText.trim().length > 0 && (
@@ -380,6 +414,10 @@ export default function TTSTab({
             </div>
           </div>
           <PlaybackProgress onPreview={handlePreview} onCapture={handleCapture} durationSecs={selectedVar.duration_secs} />
+          <a href={selectedVar.file_path} download
+            className="btn btn-ghost btn-block" style={{ marginBottom: 12, textDecoration: 'none' }}>
+            Download WAV
+          </a>
           <div className="card" style={{ padding: 14 }}>
             <VoicePicker voices={voices} selected={voiceId} onChange={onSelectVoice} />
           </div>

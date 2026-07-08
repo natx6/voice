@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -267,7 +268,9 @@ class VoiceManager:
 
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
-        tag = f"tts_{ts}_{seed}" if seed is not None else f"tts_{ts}"
+        # Auto-name from first words of text
+        safe = re.sub(r'[^\w\s-]', '', text[:40]).strip().replace(' ', '_')[:30] if text else "voice"
+        tag = f"{safe}_{ts}_{seed}" if seed is not None else f"{safe}_{ts}"
         raw_path = TEMP_DIR / f"{tag}.raw"
         raw_path.write_bytes(data)
 
