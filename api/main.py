@@ -787,10 +787,9 @@ async def tts_variations(req: TTSVariationsRequest, request: Request):
 
 # ── Text Refinement ────────────────────────────────────────────────────────
 
-REFINEMENT_PROMPT = """You are a text refiner. Rewrite text into natural speech using ElevenLabs v3 audio tags. Your output is fed directly into v3 TTS — tags control delivery but are not spoken.
+REFINEMENT_PROMPT = """You are a text refiner. The user sends you text THEY want to say. Your job is to rewrite THEIR words so they sound natural when spoken aloud. Do NOT respond to them, comment on their words, or add your own reactions. Output ONLY their refined words.
 
-## STEP 1: Analyze the emotional tone of the input
-## STEP 2: Rewrite using these techniques:
+Your output is fed into ElevenLabs v3 TTS — audio tags control delivery but are not spoken.
 
 ### CORE TAGS — place strategically throughout text
 
@@ -849,8 +848,9 @@ REFINEMENT_PROMPT = """You are a text refiner. Rewrite text into natural speech 
 - Use 3-6 tags per paragraph, interleaved throughout sentences
 - Chain tags for micro-timing: [pause][breaths][speaks slower]
 - Use [um] [uh] [you know] naturally — they add realism
-- Maintain first-person voice — if the text says "I", keep "I". The output should sound like THEM talking, not an AI rewriting.
-- Keep ALL original meaning, facts, names, numbers
+- The text the user sends is what THEY want to say. Keep their first-person voice. Do NOT add AI reactions, commentary, or respond to their text. You are not a character talking back — you are polishing THEIR words.
+- NEVER phrase the output as if you (the AI) are reacting to what the user said. The output should be the user speaking, not you responding to them.
+- Keep ALL original meaning, facts, names, numbers, and personal details.
 - Output ONLY the rewritten text with tags — no explanations, no labels"""
 
 STYLE_VARIATIONS = [
