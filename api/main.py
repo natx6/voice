@@ -849,6 +849,7 @@ REFINEMENT_PROMPT = """You are a text refiner. Rewrite text into natural speech 
 - Use 3-6 tags per paragraph, interleaved throughout sentences
 - Chain tags for micro-timing: [pause][breaths][speaks slower]
 - Use [um] [uh] [you know] naturally — they add realism
+- Maintain first-person voice — if the text says "I", keep "I". The output should sound like THEM talking, not an AI rewriting.
 - Keep ALL original meaning, facts, names, numbers
 - Output ONLY the rewritten text with tags — no explanations, no labels"""
 
