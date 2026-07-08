@@ -494,45 +494,7 @@ async def admin_revoke_invite(request: Request, code: str = ""):
     return {"status": "revoked"}
 
 
-LANDING_PAGE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>soundhuman</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f7;color:#1d1d1f;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-.card{background:#fff;border-radius:16px;padding:40px;max-width:380px;width:100%;text-align:center;border:1px solid #e8e8ea}
-h1{font-size:22px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
-p{font-size:13px;color:#86868b;margin-bottom:24px}
-.btn{display:block;padding:12px;border-radius:10px;font-size:14px;font-weight:500;text-decoration:none;margin-bottom:8px;transition:opacity.15s}
-.btn:hover{opacity:.85}
-.btn-win{background:#0066cc;color:#fff}
-.btn-mac{background:#1d1d1f;color:#fff}
-.btn-linux{background:#e6a00e;color:#fff}
-.tag{font-size:11px;color:#aeaeb2;margin-top:16px}
-</style>
-</head>
-<body>
-<div class="card">
-  <div style="font-size:40px;margin-bottom:8px">🎙</div>
-  <h1>soundhuman</h1>
-  <p>Download the app for your platform</p>
-  <a class="btn btn-win" href="/install/install.bat" download>Download for Windows</a>
-  <a class="btn btn-mac" href="/install/install.sh" download>Download for macOS</a>
-  <a class="btn btn-linux" href="/install/install.sh" download>Download for Linux</a>
-  <div class="tag">Install once. Works with Telegram, WhatsApp, Signal.</div>
-</div>
-<script>
-var ua=navigator.userAgent;
-var btns=document.querySelectorAll('.btn');
-if(ua.indexOf('Windows')>-1)btns[0].style.border='2px solid #000';
-else if(ua.indexOf('Mac')>-1)btns[1].style.border='2px solid #000';
-else if(ua.indexOf('Linux')>-1)btns[2].style.border='2px solid #000';
-</script>
-</body>
-</html>"""
+LANDING_PAGE = Path(__file__).resolve().parent.joinpath("landing.html").read_text()
 
 
 @app.get("/", response_class=HTMLResponse)
