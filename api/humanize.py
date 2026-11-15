@@ -113,15 +113,18 @@ def _split_long_sentences(text: str, rng: random.Random) -> str:
 
 
 def _add_false_start(text: str, rng: random.Random) -> str:
-    """One repair per piece — 'I just— I just thought'. Only on the first person."""
+    """A repair that cuts off mid-clause — 'I don't— I don't know'. Repeating the
+    whole phrase sounds like an acting exercise; real repairs drop one word."""
     m = re.search(r"\b(I(?:\s+just|\s+really|\s+guess|\s+thought|\s+mean|"
-                  r"\s+don't|\s+didn't|\s+was|\s+know)?)\b(\s+\w+)", text)
+                  r"\s+don't|\s+didn't|\s+was|\s+know)?(?:\s+\w+){0,2})\b", text)
     if not m:
         return text
-    phrase = m.group(0)
-    if rng.random() < 0.55:
-        return text[:m.start()] + phrase + "— " + phrase + text[m.end():]
-    return text
+    clause = m.group(0).strip()
+    words = clause.split()
+    if len(words) < 2 or rng.random() > 0.30:
+        return text
+    cut = " ".join(words[:-1])
+    return text[:m.start()] + f"{cut}— {clause}" + text[m.end():]
 
 
 # Words that are safe to lowercase when they open a sentence mid-flow. Anything
@@ -153,8 +156,8 @@ def _lower_first(text: str) -> str:
 def _soften_punctuation(text: str, rng: random.Random, style: str) -> str:
     """Trail off at sentence ends; hesitate at commas. Never join with a dash —
     a dash across a full stop drags the next capital letter with it."""
-    ellipsis_rate = {"sad": 0.55, "anxious": 0.45, "smug": 0.4,
-                     "comforting": 0.25}.get(style, 0.22)
+    ellipsis_rate = {"sad": 0.6, "anxious": 0.5, "smug": 0.45,
+                     "comforting": 0.3}.get(style, 0.35)
     dash_rate = {"anxious": 0.45, "angry": 0.35}.get(style, 0.2)
 
     pieces = re.split(r"(?<=[.!?])(\s+)", text)
@@ -195,9 +198,14 @@ def _insert_tags(text: str, rng: random.Random, style: str) -> str:
     else:
         tag_laugh = None
 
-    # Put a beat before the turn — the sentence that contradicts what came first.
+    # Always put a beat before a deflection — "it's fine", "whatever". That
+    # turn is where a spoken take separates from a read one, so it is not left
+    # to the random draw. Matched without apostrophes: humanize() strips them.
     for idx, s in enumerate(sentences):
-        if idx and re.match(r"(but|and yet|it's fine|i'm fine|anyway)", s.strip(), re.I):
+        head = s.strip().lower()
+        if idx and re.match(r"(but\b|and yet|its fine|it is fine|im fine|i am fine|"
+                            r"anyway\b|whatever|never ?mind|doesn'?t matter|"
+                            r"no rush|never mind)", head):
             chosen.add(idx)
             break
 
