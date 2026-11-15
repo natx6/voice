@@ -21,6 +21,14 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+# Load .env from the repo root so keys survive a shell restart.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:  # python-dotenv not installed — env must come from the shell
+    pass
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
@@ -883,7 +891,7 @@ async def refine_text(req: RefineTextRequest, request: Request):
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     if not api_key:
         # Fallback: simple rule-based refinement (no API key needed)
-        refined = _simple_refine(req.text)
+        refined = _simple_refine(req.text, req.style or "conversational")
         return RefineTextResponse(status="ok", original=req.text, refined=refined, provider="rules")
 
     try:
@@ -939,51 +947,13 @@ async def refine_text(req: RefineTextRequest, request: Request):
         raise HTTPException(status_code=500, detail=f"Refinement failed: {e}")
 
 
-def _simple_refine(text: str) -> str:
-    """Simple rule-based fallback when no DeepSeek API key is set."""
-    import re
-    # Replace formal patterns
-    replacements = {
-        r"\bI am\b": "I'm",
-        r"\byou are\b": "you're",
-        r"\bhe is\b": "he's",
-        r"\bshe is\b": "she's",
-        r"\bit is\b": "it's",
-        r"\bwe are\b": "we're",
-        r"\bthey are\b": "they're",
-        r"\bcannot\b": "can't",
-        r"\bdo not\b": "don't",
-        r"\bdoes not\b": "doesn't",
-        r"\bwill not\b": "won't",
-        r"\bhave not\b": "haven't",
-        r"\bhas not\b": "hasn't",
-        r"\bwould not\b": "wouldn't",
-        r"\bshould not\b": "shouldn't",
-        r"\bcould not\b": "couldn't",
-        r"\bis not\b": "isn't",
-        r"\bare not\b": "aren't",
-        r"\bwas not\b": "wasn't",
-        r"\bwere not\b": "weren't",
-        r"\bin order to\b": "to",
-        r"\bwith regard to\b": "about",
-        r"\bas a result of\b": "because of",
-        r"\bin the event that\b": "if",
-        r"\bprior to\b": "before",
-        r"\bsubsequently\b": "then",
-        r"\butilize\b": "use",
-        r"\bimplement\b": "do",
-        r"\bapproximately\b": "about",
-        r"\bsufficient\b": "enough",
-        r"\bnumerous\b": "many",
-        r"\bfurthermore\b": "also",
-        r"\bhowever\b": "but",
-        r"\bnevertheless\b": "still",
-        r"\badditionally\b": "plus",
-    }
-    result = text
-    for pattern, replacement in replacements.items():
-        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
-    return result.strip()
+def _simple_refine(text: str, style: str = "conversational") -> str:
+    """Offline speech rewrite: contractions, filler openers, false starts, audio
+    tags, hesitation. This is what makes a take sound spoken instead of read —
+    the voice and the model are identical either way."""
+    from api.humanize import humanize
+
+    return humanize(text, style=style)
 
 
 # ── Playback ──────────────────────────────────────────────────────────────

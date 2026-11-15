@@ -33,7 +33,7 @@ from voice_converter import pulse_name, VIRTUAL_SINK_NAME, VoiceSettings, VOICE_
 TEMP_DIR = Path(tempfile.gettempdir()) / "tts_voice_note"
 TEMP_CONV = TEMP_DIR / "tts_output.raw"
 OUTPUT_RATE = 24000  # Hz
-MODEL_ID = "eleven_v3"
+MODEL_ID = "eleven_v3_conversational"
 OUTPUT_FMT = "pcm_24000"
 
 # ── Session History ────────────────────────────────────────────────────────
